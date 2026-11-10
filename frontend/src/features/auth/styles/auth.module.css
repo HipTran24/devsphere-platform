@@ -1,0 +1,233 @@
+/* Nền trang luôn màu đen; khung tự căn giữa theo viewport. */
+.page {
+    position: relative;
+    isolation: isolate;
+    min-height: 100vh;
+    min-height: 100dvh;
+    display: grid;
+    place-items: center;
+    padding: 24px;
+    background: var(--color-background);
+}
+
+/* Sao trang trí nằm sau nội dung, không nhận thao tác chuột. */
+.page::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background: url("/starfield.svg") center / cover no-repeat;
+}
+
+.card {
+    width: 100%;
+    max-width: 700px;
+    min-height: 439.38px;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-areas: "intro form";
+    background: transparent;
+    border: 1px solid color-mix(in srgb, var(--color-white) 9%, transparent);
+    border-radius: 16px;
+    overflow: hidden;
+    box-shadow: 0 24px 80px color-mix(in srgb, var(--color-black) 85%, transparent);
+}
+
+.introPanel, .formPanel {
+    transition: transform 700ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.loginCard .introPanel { transform: translateX(100%); }
+.loginCard .formPanel { transform: translateX(-100%); }
+
+@property --welcome-border-angle {
+    syntax: "<angle>";
+    inherits: false;
+    initial-value: 0deg;
+}
+
+.introPanel {
+    position: relative;
+    z-index: 2;
+    grid-area: intro;
+    min-width: 0;
+    padding: 35px 39px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: 24px;
+    border: 1px solid color-mix(in srgb, var(--color-primary) 12%, transparent);
+    border-radius: 15px;
+    background-color: rgba(12, 29, 26, 0.25);
+    background-image:
+        radial-gradient(
+            190px 155px at 18% 14%,
+            rgba(46, 229, 193, 0.28) 0%,
+            rgba(46, 229, 193, 0.06) 52%,
+            transparent 100%
+        ),
+        linear-gradient(
+            135deg,
+            rgba(255, 255, 255, 0.07) 0%,
+            rgba(255, 255, 255, 0.015) 32%,
+            transparent 65%,
+            rgba(46, 229, 193, 0.04) 100%
+        );
+}
+
+/* Một đoạn sáng chạy đúng một vòng, sau đó biến mất. */
+.borderBeam {
+    content: "";
+    position: absolute;
+    inset: -1px;
+    padding: 1.5px;
+    border-radius: inherit;
+    pointer-events: none;
+    opacity: 0;
+    background: conic-gradient(
+        from var(--welcome-border-angle),
+        transparent 0deg,
+        transparent 285deg,
+        color-mix(in srgb, var(--color-primary) 25%, transparent) 315deg,
+        var(--color-primary) 350deg,
+        transparent 360deg
+    );
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    mask-composite: exclude;
+    filter: drop-shadow(0 0 3px var(--color-primary));
+    animation: welcomeBorderLap 1.8s linear 1 both;
+}
+
+.borderBeamPaused { animation: none; opacity: 0; }
+
+@keyframes welcomeBorderLap {
+    0% { --welcome-border-angle: 0deg; opacity: 0; }
+    6% { opacity: 1; }
+    92% { opacity: 1; }
+    100% { --welcome-border-angle: 360deg; opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .borderBeam { animation: none; }
+}
+
+.brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    color: var(--color-text);
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 2.8px;
+    white-space: nowrap;
+}
+
+/* Giữ khung để bổ sung logo sau, không sử dụng hình logo của bản mẫu. */
+.logoFrame {
+    flex: 0 0 30px;
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+    border: 1px solid color-mix(in srgb, var(--color-primary) 35%, transparent);
+    background: color-mix(in srgb, var(--color-primary) 8%, var(--color-card));
+    box-shadow: 0 0 16px color-mix(in srgb, var(--color-primary) 15%, transparent);
+}
+
+.introContent { position: relative; padding-block: 16px; }
+.formStage { position: relative; width: 100%; max-width: 268px; margin-inline: auto; }
+.welcomeView, .formView {
+    position: relative;
+    opacity: 1;
+    visibility: visible;
+    transform: translateX(0);
+    transition: opacity 500ms cubic-bezier(0.22, 1, 0.36, 1), transform 500ms cubic-bezier(0.22, 1, 0.36, 1), visibility 0s;
+}
+.inactiveView {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity 500ms cubic-bezier(0.22, 1, 0.36, 1), transform 500ms cubic-bezier(0.22, 1, 0.36, 1), visibility 0s 500ms;
+}
+.welcomeView.inactiveView { top: 16px; bottom: auto; }
+.registerWelcome.inactiveView { transform: translateX(-24px); }
+.loginWelcome.inactiveView { transform: translateX(24px); }
+.registerView.inactiveView { transform: translateX(32px); }
+.loginView.inactiveView { transform: translateX(-32px); }
+.welcome {
+    margin: 0 0 16px;
+    font-size: 28px;
+    font-weight: 800;
+    line-height: 1.18;
+    letter-spacing: 0.8px;
+    word-spacing: 2px;
+}
+.welcome span { display: block; margin-top: 4px; color: var(--color-primary); }
+.description { margin: 0; max-width: 260px; font-size: 12px; line-height: 1.7; color: var(--color-text-secondary); }
+.switchButton {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: 33px;
+    margin-top: 24px;
+    padding: 6px 16px;
+    border: 1px solid color-mix(in srgb, var(--color-primary) 55%, transparent);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--color-primary) 5%, transparent);
+    color: var(--color-text);
+    font-size: 11px;
+    font-weight: 600;
+    text-decoration: none;
+}
+.switchButton > span { line-height: 20px; }
+.switchButton > svg { color: var(--color-primary); }
+.switchButton:hover { background: color-mix(in srgb, var(--color-primary) 15%, transparent); }
+.manifest { display: flex; justify-content: flex-start; align-items: center; flex-wrap: wrap; gap: 8px; margin: 0; color: var(--color-text-secondary); font-size: 9px; font-weight: 600; letter-spacing: 0.8px; }
+.manifest span:first-child { color: var(--color-primary); }
+.manifest i { font-style: normal; opacity: 0.4; }
+.formPanel { position: relative; z-index: 1; grid-area: form; min-width: 0; padding: 27px 39px; display: flex; flex-direction: column; justify-content: center; background-color: rgba(24, 26, 25, 0.95); }
+
+/* Lấp đúng khoảng ngoài đường cong, giữ nền Welcome trong suốt như cũ. */
+.formPanel::before, .formPanel::after {
+    content: "";
+    position: absolute;
+    left: -15px;
+    width: 15px;
+    height: 15px;
+    pointer-events: none;
+}
+.formPanel::before {
+    top: 0;
+    background: radial-gradient(circle at 0 100%, transparent 15px, rgba(24, 26, 25, 0.95) 15px);
+}
+.formPanel::after {
+    bottom: 0;
+    background: radial-gradient(circle at 0 0, transparent 15px, rgba(24, 26, 25, 0.95) 15px);
+}
+.loginCard .formPanel::before, .loginCard .formPanel::after { left: auto; right: -15px; }
+.loginCard .formPanel::before { background: radial-gradient(circle at 100% 100%, transparent 15px, rgba(24, 26, 25, 0.95) 15px); }
+.loginCard .formPanel::after { background: radial-gradient(circle at 100% 0, transparent 15px, rgba(24, 26, 25, 0.95) 15px); }
+
+@media (max-width: 680px) {
+    .page { padding: 20px 16px; }
+    .card, .loginCard { max-width: 400px; min-height: auto; grid-template-columns: 1fr; grid-template-areas: "intro" "form"; }
+    .introPanel, .formPanel { padding: 28px 24px; }
+    .introPanel { gap: 20px; }
+    .card .introPanel, .card .formPanel { transform: none; }
+    .formStage { max-width: none; }
+    .card .formPanel::before, .card .formPanel::after { top: -15px; bottom: auto; }
+    .card .formPanel::before { left: 0; right: auto; background: radial-gradient(circle at 100% 0, transparent 15px, rgba(24, 26, 25, 0.95) 15px); }
+    .card .formPanel::after { left: auto; right: 0; background: radial-gradient(circle at 0 0, transparent 15px, rgba(24, 26, 25, 0.95) 15px); }
+    .introContent { padding-block: 0; }
+    .welcomeView.inactiveView { top: 0; }
+    .welcome { font-size: 25px; }
+    .description { max-width: none; font-size: 13px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .introPanel, .formPanel, .welcomeView, .formView, .inactiveView { transition: none; }
+}
