@@ -1,0 +1,63 @@
+/* Giá trị thiết kế dùng chung của DevSphere. */
+:root {
+  --color-black: #000000;
+  --color-white: #E3E5E1;
+  --color-primary: #2DD4BF;
+  --color-card: #171716;
+  --color-text-secondary: #A8ABA6;
+
+  --color-background: var(--color-black);
+  --color-text: var(--color-white);
+
+  --font-family-base: var(--font-plus-jakarta-sans), Arial, sans-serif;
+
+  color-scheme: dark;
+}
+
+/* Padding và border được tính trong kích thước của phần tử. */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  font-size: 100%;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: var(--font-family-base);
+  font-size: 1rem;
+  line-height: 1.5;
+  color: var(--color-text);
+  background-color: var(--color-background);
+}
+
+/* Các điều khiển dùng cùng font với nội dung xung quanh. */
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+/* Ảnh và video co lại theo vùng chứa, giữ nguyên tỉ lệ. */
+img,
+video {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+/* Giữ liên kết có gạch chân để dễ nhận biết. */
+a {
+  color: inherit;
+}
+
+/* Hiển thị vị trí focus khi điều hướng bằng bàn phím. */
+:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 3px;
+}
