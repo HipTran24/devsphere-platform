@@ -1,0 +1,73 @@
+erDiagram
+  developer_capacity {
+    uuid id PK
+    uuid project_id
+    uuid user_id
+    jsonb skills
+    jsonb weekly_slots
+    jsonb time_off
+    int minutes_per_workday
+    decimal_5_2_ allocation_pct
+    date effective_from
+    date effective_to
+    timestamptz created_at
+    timestamptz updated_at
+    bigint version
+  }
+  plan_proposals {
+    uuid id PK
+    uuid project_id
+    varchar_24_ kind
+    bigint base_project_version
+    uuid base_schedule_version_id
+    uuid requirement_version_id
+    uuid change_request_id
+    uuid ai_job_id
+    varchar_24_ status
+    jsonb proposal_payload
+    varchar_16_ solver_status
+    jsonb solver_details
+    jsonb assumptions
+    uuid created_by
+    uuid approved_by
+    timestamptz approved_at
+    bool changes_committed_deadline
+    date proposed_committed_deadline
+    uuid deadline_confirmed_by
+    timestamptz deadline_confirmed_at
+    bigint deadline_confirmation_version
+    bigint deadline_confirmed_project_version
+    timestamptz created_at
+    timestamptz updated_at
+    bigint version
+  }
+  schedule_versions {
+    uuid id PK
+    uuid project_id
+    int version_no
+    varchar_16_ source
+    uuid proposal_id
+    uuid approved_by
+    timestamptz approved_at
+    date planned_finish
+    date forecast_finish
+    jsonb milestone_delays
+    jsonb baseline_snapshot
+    timestamptz created_at
+  }
+  schedule_entries {
+    uuid id PK
+    uuid project_id
+    uuid schedule_version_id
+    uuid work_item_id
+    uuid sprint_id
+    uuid assignee_id
+    timestamptz start_at
+    timestamptz finish_at
+    int remaining_minutes_snapshot
+    bool frozen
+    timestamptz created_at
+  }
+  schedule_versions ||--o{ plan_proposals : references
+  schedule_versions ||--o{ schedule_entries : references
+  plan_proposals ||--o{ schedule_versions : references

@@ -1,0 +1,98 @@
+erDiagram
+  github_repositories {
+    uuid id PK
+    uuid workspace_id
+    uuid project_id
+    bigint github_installation_id
+    bigint github_repo_id
+    varchar_255_ full_name
+    varchar_120_ default_branch
+    bool private
+    bool active
+    text sync_cursor
+    timestamptz last_synced_at
+    timestamptz created_at
+    timestamptz updated_at
+    bigint version
+  }
+  github_events {
+    uuid id PK
+    uuid project_id
+    uuid repository_id
+    varchar_120_ delivery_id
+    varchar_80_ event_type
+    varchar_80_ action
+    jsonb payload
+    varchar_12_ process_status
+    int attempts
+    timestamptz received_at
+    timestamptz processed_at
+    timestamptz created_at
+    timestamptz updated_at
+    bigint version
+  }
+  github_activities {
+    uuid id PK
+    uuid project_id
+    uuid repository_id
+    uuid work_item_id
+    varchar_16_ kind
+    varchar_100_ github_object_id
+    char_40_ commit_sha
+    int pr_number
+    char_40_ pr_head_sha
+    varchar_150_ actor_login
+    varchar_60_ state
+    text title
+    jsonb payload
+    timestamptz happened_at
+    timestamptz synced_at
+    timestamptz created_at
+    timestamptz updated_at
+    bigint version
+  }
+  ci_runs {
+    uuid id PK
+    uuid project_id
+    uuid repository_id
+    uuid work_item_id
+    bigint github_run_id
+    int run_attempt
+    char_40_ head_sha
+    int pr_number
+    varchar_16_ status
+    varchar_16_ conclusion
+    jsonb checks
+    jsonb metrics
+    timestamptz started_at
+    timestamptz completed_at
+    timestamptz created_at
+    timestamptz updated_at
+    bigint version
+  }
+  code_reviews {
+    uuid id PK
+    uuid project_id
+    uuid repository_id
+    uuid work_item_id
+    uuid ai_job_id
+    int pr_number
+    char_40_ head_sha
+    bigint context_version
+    varchar_8_ scope
+    varchar_8_ reviewer_kind
+    jsonb findings
+    text summary
+    varchar_24_ status
+    jsonb gate_snapshot
+    uuid reviewer_id
+    varchar_120_ model_name
+    timestamptz completed_at
+    timestamptz created_at
+    timestamptz updated_at
+    bigint version
+  }
+  github_repositories ||--o{ ci_runs : references
+  github_repositories ||--o{ code_reviews : references
+  github_repositories ||--o{ github_activities : references
+  github_repositories ||--o{ github_events : references

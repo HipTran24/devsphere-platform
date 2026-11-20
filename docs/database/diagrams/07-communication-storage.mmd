@@ -1,0 +1,86 @@
+erDiagram
+  chat_channels {
+    uuid id PK
+    uuid workspace_id
+    uuid project_id
+    uuid work_item_id
+    varchar_12_ type
+    varchar_150_ name
+    uuid created_by
+    timestamptz archived_at
+    timestamptz created_at
+    timestamptz updated_at
+    bigint version
+  }
+  chat_channel_members {
+    uuid id PK
+    uuid workspace_id
+    uuid project_id
+    uuid channel_id
+    uuid user_id
+    timestamptz joined_at
+    bool muted
+    timestamptz created_at
+    timestamptz updated_at
+    bigint version
+  }
+  chat_messages {
+    uuid id PK
+    uuid workspace_id
+    uuid project_id
+    uuid channel_id
+    uuid sender_id
+    varchar_8_ sender_kind
+    uuid ai_job_id
+    uuid reply_to_id
+    text body
+    uuid__ mentions
+    jsonb provenance
+    timestamptz sent_at
+    timestamptz edited_at
+    timestamptz deleted_at
+    timestamptz created_at
+    timestamptz updated_at
+    bigint version
+  }
+  notifications {
+    uuid id PK
+    uuid workspace_id
+    uuid user_id
+    uuid project_id
+    varchar_100_ event_type
+    varchar_180_ event_key
+    varchar_180_ title
+    text body
+    text deeplink
+    timestamptz read_at
+    varchar_16_ email_status
+    timestamptz created_at
+    timestamptz updated_at
+    bigint version
+  }
+  attachments {
+    uuid id PK
+    uuid workspace_id
+    uuid project_id
+    uuid work_item_id
+    uuid chat_message_id
+    uuid report_id
+    uuid ci_run_id
+    uuid uploaded_by
+    varchar_16_ kind
+    varchar_512_ storage_key
+    varchar_255_ filename
+    varchar_120_ content_type
+    bigint file_size
+    char_64_ sha256
+    varchar_16_ visibility
+    varchar_12_ scan_status
+    timestamptz deleted_at
+    timestamptz created_at
+    timestamptz updated_at
+    bigint version
+  }
+  chat_messages ||--o{ attachments : references
+  chat_channels ||--o{ chat_channel_members : references
+  chat_channels ||--o{ chat_messages : references

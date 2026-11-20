@@ -1,0 +1,133 @@
+erDiagram
+  requirements {
+    uuid id PK
+    uuid project_id
+    varchar_32_ code
+    varchar_16_ kind
+    uuid parent_requirement_id
+    varchar_220_ title
+    text description
+    varchar_16_ status
+    varchar_24_ change_request_status
+    int current_version
+    uuid requested_by
+    uuid approved_by
+    jsonb impact_json
+    timestamptz created_at
+    timestamptz updated_at
+    bigint version
+  }
+  requirement_versions {
+    uuid id PK
+    uuid project_id
+    uuid requirement_id
+    int version_no
+    text description
+    text acceptance_summary
+    text change_reason
+    timestamptz approved_at
+    timestamptz created_at
+  }
+  work_items {
+    uuid id PK
+    uuid project_id
+    varchar_32_ item_key
+    uuid parent_id
+    uuid requirement_id
+    uuid sprint_id
+    uuid milestone_id
+    varchar_16_ type
+    varchar_12_ work_kind
+    varchar_255_ title
+    text description
+    varchar_16_ status
+    bool is_blocked
+    text blocked_reason
+    varchar_12_ priority
+    uuid assignee_id
+    jsonb required_skills
+    text__ labels
+    decimal_24_8_ backlog_rank
+    decimal_5_2_ story_points
+    int estimate_minutes
+    int remaining_minutes
+    int time_spent_minutes
+    decimal_5_2_ claimed_progress
+    decimal_5_2_ verified_progress
+    jsonb progress_evidence
+    timestamptz started_at
+    timestamptz completed_at
+    timestamptz due_at
+    uuid accepted_by
+    timestamptz deleted_at
+    timestamptz created_at
+    timestamptz updated_at
+    bigint version
+  }
+  work_item_dependencies {
+    uuid id PK
+    uuid project_id
+    uuid predecessor_id
+    uuid successor_id
+    varchar_24_ link_type
+    int lag_minutes
+    timestamptz created_at
+  }
+  acceptance_criteria {
+    uuid id PK
+    uuid project_id
+    uuid work_item_id
+    int position
+    text description
+    varchar_16_ evidence_kind
+    decimal_8_3_ weight
+    varchar_24_ status
+    jsonb evidence
+    uuid verified_by
+    timestamptz verified_at
+    timestamptz created_at
+    timestamptz updated_at
+    bigint version
+  }
+  sprints {
+    uuid id PK
+    uuid project_id
+    varchar_120_ name
+    text goal
+    date start_date
+    date end_date
+    varchar_12_ status
+    text review_notes
+    text retrospective_notes
+    decimal_8_2_ committed_points
+    decimal_8_2_ completed_points
+    timestamptz closed_at
+    timestamptz created_at
+    timestamptz updated_at
+    bigint version
+  }
+  milestones {
+    uuid id PK
+    uuid project_id
+    varchar_24_ code
+    varchar_160_ name
+    text description
+    date due_date
+    date forecast_date
+    varchar_24_ status
+    varchar_32_ acceptance_status
+    bool published_to_client
+    jsonb acceptance_history
+    uuid accepted_by
+    timestamptz accepted_at
+    timestamptz created_at
+    timestamptz updated_at
+    bigint version
+  }
+  work_items ||--o{ acceptance_criteria : references
+  requirements ||--o{ requirement_versions : references
+  requirement_versions ||--o{ requirements : references
+  work_items ||--o{ work_item_dependencies : references
+  milestones ||--o{ work_items : references
+  requirements ||--o{ work_items : references
+  sprints ||--o{ work_items : references

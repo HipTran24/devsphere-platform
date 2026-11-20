@@ -1,0 +1,39 @@
+erDiagram
+  alerts {
+    uuid id PK
+    uuid project_id
+    uuid work_item_id
+    uuid previous_alert_id
+    char_64_ fingerprint
+    varchar_80_ alert_code
+    varchar_12_ severity
+    varchar_16_ status
+    varchar_255_ title
+    jsonb evidence
+    jsonb impact_snapshot
+    uuid assigned_to
+    uuid acknowledged_by
+    timestamptz detected_at
+    timestamptz resolved_at
+    timestamptz created_at
+    timestamptz updated_at
+    bigint version
+  }
+  reports {
+    uuid id PK
+    uuid project_id
+    varchar_16_ type
+    date period_start
+    date period_end
+    varchar_12_ status
+    jsonb content
+    bool visible_to_client
+    uuid milestone_id
+    uuid generated_by
+    uuid ai_job_id
+    uuid approved_by
+    timestamptz published_at
+    timestamptz created_at
+    timestamptz updated_at
+    bigint version
+  }

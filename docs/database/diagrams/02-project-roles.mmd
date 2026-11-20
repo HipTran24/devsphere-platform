@@ -1,0 +1,47 @@
+erDiagram
+  projects {
+    uuid id PK
+    uuid workspace_id
+    varchar_16_ project_key
+    varchar_160_ name
+    text description
+    text objective
+    varchar_12_ status
+    varchar_64_ timezone
+    date planned_start
+    date committed_deadline
+    int sprint_length_days
+    jsonb settings
+    uuid active_schedule_version_id
+    uuid deadline_approver_id
+    bigint next_item_number
+    timestamptz created_at
+    timestamptz updated_at
+    bigint version
+  }
+  project_members {
+    uuid id PK
+    uuid project_id
+    uuid workspace_id
+    uuid user_id
+    varchar_12_ status
+    timestamptz joined_at
+    timestamptz created_at
+    timestamptz updated_at
+    bigint version
+  }
+  project_member_roles {
+    uuid id PK
+    uuid project_id
+    uuid project_member_id
+    varchar_12_ role
+    uuid granted_by
+    timestamptz granted_at
+    uuid accepted_by
+    timestamptz accepted_at
+    timestamptz revoked_at
+    timestamptz created_at
+  }
+  project_members ||--o{ project_member_roles : references
+  projects ||--o{ project_member_roles : references
+  projects ||--o{ project_members : references

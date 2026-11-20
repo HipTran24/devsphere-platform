@@ -1,0 +1,66 @@
+erDiagram
+  ai_jobs {
+    uuid id PK
+    uuid workspace_id
+    uuid project_id
+    uuid requested_by
+    varchar_24_ job_type
+    varchar_12_ status
+    varchar_140_ model_name
+    varchar_80_ connection_id
+    jsonb route_snapshot
+    varchar_40_ prompt_version
+    varchar_40_ output_schema_version
+    jsonb input_refs
+    jsonb output_json
+    varchar_16_ validation_status
+    jsonb validation_report
+    smallint validation_attempts
+    varchar_140_ validated_by_model
+    int tokens_in
+    int tokens_out
+    varchar_100_ error_code
+    timestamptz started_at
+    timestamptz finished_at
+    timestamptz created_at
+    timestamptz updated_at
+    bigint version
+  }
+  audit_logs {
+    uuid id PK
+    uuid workspace_id
+    uuid project_id
+    uuid actor_id
+    varchar_120_ action
+    varchar_100_ entity_type
+    uuid entity_id
+    jsonb before_json
+    jsonb after_json
+    jsonb metadata
+    timestamptz occurred_at
+    varchar_64_ trace_id
+    timestamptz created_at
+  }
+  background_jobs {
+    uuid id PK
+    uuid workspace_id
+    uuid project_id
+    uuid requested_by
+    varchar_24_ job_kind
+    varchar_180_ idempotency_key
+    char_64_ request_hash
+    jsonb payload
+    jsonb result
+    varchar_12_ status
+    int attempts
+    timestamptz scheduled_at
+    timestamptz started_at
+    timestamptz finished_at
+    timestamptz expires_at
+    varchar_120_ locked_by
+    timestamptz locked_until
+    text last_error
+    timestamptz created_at
+    timestamptz updated_at
+    bigint version
+  }

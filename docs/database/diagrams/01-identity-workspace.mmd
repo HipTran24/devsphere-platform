@@ -1,0 +1,93 @@
+erDiagram
+  users {
+    uuid id PK
+    citext email
+    varchar_255_ password_hash
+    varchar_120_ display_name
+    text avatar_key
+    varchar_8_ system_role
+    varchar_12_ status
+    timestamptz email_verified_at
+    timestamptz created_at
+    timestamptz updated_at
+    bigint version
+  }
+  oauth_accounts {
+    uuid id PK
+    uuid user_id
+    varchar_16_ provider
+    varchar_200_ provider_subject
+    varchar_160_ provider_login
+    timestamptz linked_at
+    timestamptz created_at
+  }
+  auth_tokens {
+    uuid id PK
+    uuid user_id
+    citext email
+    varchar_24_ purpose
+    varchar_255_ token_hash
+    timestamptz expires_at
+    timestamptz used_at
+    smallint attempts
+    timestamptz created_at
+  }
+  auth_sessions {
+    uuid id PK
+    uuid user_id
+    varchar_255_ refresh_hash
+    timestamptz issued_at
+    timestamptz expires_at
+    timestamptz revoked_at
+    text user_agent
+    inet ip
+    uuid session_family_id
+    timestamptz created_at
+  }
+  workspaces {
+    uuid id PK
+    varchar_80_ slug
+    varchar_160_ name
+    uuid owner_id
+    text description
+    varchar_24_ status
+    jsonb settings
+    jsonb ai_connections
+    jsonb ai_task_routes
+    timestamptz created_at
+    timestamptz updated_at
+    bigint version
+  }
+  workspace_members {
+    uuid id PK
+    uuid workspace_id
+    uuid user_id
+    varchar_8_ role
+    varchar_12_ status
+    timestamptz joined_at
+    timestamptz created_at
+    timestamptz updated_at
+    bigint version
+  }
+  workspace_invitations {
+    uuid id PK
+    uuid workspace_id
+    citext email
+    varchar_255_ token_hash
+    uuid invited_by
+    varchar_24_ role
+    varchar_12_ status
+    timestamptz expires_at
+    timestamptz accepted_at
+    timestamptz created_at
+    timestamptz updated_at
+    bigint version
+  }
+  users ||--o{ auth_sessions : references
+  users ||--o{ auth_tokens : references
+  users ||--o{ oauth_accounts : references
+  users ||--o{ workspace_invitations : references
+  workspaces ||--o{ workspace_invitations : references
+  users ||--o{ workspace_members : references
+  workspaces ||--o{ workspace_members : references
+  users ||--o{ workspaces : references
