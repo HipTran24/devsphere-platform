@@ -14,6 +14,7 @@ import com.project.devsphere.workitem.domain.WorkItem;
 import com.project.devsphere.workitem.infrastructure.persistence.WorkItemRepository;
 import jakarta.persistence.EntityManager;
 import org.flywaydb.core.Flyway;
+import org.flywaydb.core.api.MigrationVersion;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -124,14 +125,16 @@ class DevsphereApplicationTests {
     @Test void migratesThirtySixTablesAndValidatesEveryJpaEntity() {
         assertThat(jdbc.queryForObject("select count(*) from information_schema.tables where table_schema='public' and table_type='BASE TABLE' and table_name<>'flyway_schema_history'",Integer.class)).isEqualTo(36);
         assertThat(em.getMetamodel().getEntities()).hasSize(36);
-        assertThat(flyway.info().applied()).hasSize(6);flyway.validate();
+        assertThat(flyway.info().applied()).hasSize(7);
+        assertThat(flyway.info().current().getVersion()).isEqualTo(MigrationVersion.fromVersion("7"));
+        flyway.validate();
         assertThat(flyway.migrate().migrationsExecuted).isZero();
     }
     @Test void eachMigrationUpgradesFromItsPredecessor() {
         jdbc.execute("create database migration_upgrade_test");
         String url=POSTGRES.getJdbcUrl().replaceFirst("/[^/?]+(?=\\?|$)","/migration_upgrade_test");
         try {
-            for(int v=1;v<=6;v++) {
+            for(int v=1;v<=7;v++) {
                 var runner=Flyway.configure().dataSource(url,POSTGRES.getUsername(),POSTGRES.getPassword()).target(Integer.toString(v)).load();
                 assertThat(runner.migrate().migrationsExecuted).isEqualTo(1);runner.validate();
             }

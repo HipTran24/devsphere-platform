@@ -10,7 +10,8 @@ Mỗi file SQL migration thuộc một commit riêng, cùng mapping liên quan. 
 | V004 | `feat(db): add github and code quality persistence` | Git integration và Code Quality |
 | V005 | `feat(db): add collaboration ai and operations persistence` | Monitoring, Communication, Notification, Storage, Reporting, AI, Audit, Operations |
 | V006 | `feat(db): enforce tenant integrity and workflow invariants` | FK/trigger/view, transaction, outbox, kiểm thử và tài liệu ERD |
+| V007 | `feat(auth): register accounts with email verification` | V007 bổ sung AUTH_VERIFY_EMAIL, chỉ mục token xác thực và quy trình kiểm thử worker trên Testcontainers. |
 
 Phần dọn công cụ hỗ trợ sử dụng Java/Flyway callback và SQL bootstrap của Docker. Công cụ nhập lịch sử tạm thời đã được gỡ khỏi mã nguồn.
 
-Lịch sử đóng gói trong `delivery/` là tài liệu bàn giao, không được ứng dụng sử dụng khi chạy. Chỉ dùng gói có manifest khớp snapshot hiện tại. Checkout gốc chỉ có thể cập nhật Git metadata khi permission profile cho phép ghi `.git`. Mục tiêu bàn giao là commit trực tiếp trên `main` và không push remote.
+Lịch sử đóng gói trong `delivery/` thuộc đợt bàn giao nền tảng V001–V006. Đợt triển khai tính năng dùng các nhánh và điều kiện kiểm thử trong [lộ trình backend](../backend/delivery-plan.md).

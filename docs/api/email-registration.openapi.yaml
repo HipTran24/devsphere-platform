@@ -1,0 +1,186 @@
+openapi: 3.1.0
+info:
+  title: DevSphere registration and email verification
+  version: 0.1.0
+  description: M1.1 endpoints implementing user registration, email OTP verification, and verification code resend operations.
+servers:
+  - url: /api/v1
+paths:
+  /auth/register:
+    post:
+      operationId: registerAccount
+      summary: Register a pending account and queue a verification email
+      description: Email is case-insensitively unique. A successful response confirms that the account and email job were stored together.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegistrationRequest'
+      responses:
+        '201':
+          description: Pending account and verification challenge
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegistrationReceipt'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '409':
+          description: EMAIL_ALREADY_EXISTS
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '503':
+          $ref: '#/components/responses/AuthUnavailable'
+  /auth/verify-email:
+    post:
+      operationId: verifyRegistrationEmail
+      summary: Activate the pending account with a valid code
+      description: The challenge expires after 10 minutes and allows at most five failed attempts. An accepted code is consumed.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [challengeId, code]
+              properties:
+                challengeId:
+                  type: string
+                  format: uuid
+                code:
+                  type: string
+                  pattern: '^[0-9]{6}$'
+      responses:
+        '200':
+          description: Activated account
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [userId, status]
+                properties:
+                  userId:
+                    type: string
+                    format: uuid
+                  status:
+                    const: ACTIVE
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '503':
+          description: AUTH_NOT_CONFIGURED when OTP verification keys are unavailable. An SMTP outage does not prevent verifying an existing code.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /auth/verification/resend:
+    post:
+      operationId: resendRegistrationVerification
+      summary: Retire the current registration challenge and queue a new one
+      description: The current challenge can be renewed after 30 seconds. The account may receive up to five challenges per hour, including the original challenge.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [challengeId]
+              properties:
+                challengeId:
+                  type: string
+                  format: uuid
+      responses:
+        '202':
+          description: New challenge and queued email
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VerificationChallenge'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '429':
+          description: Verification email cooldown or hourly limit
+          headers:
+            Retry-After:
+              description: Seconds before another request can be accepted
+              schema:
+                type: integer
+                minimum: 1
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '503':
+          $ref: '#/components/responses/AuthUnavailable'
+components:
+  schemas:
+    RegistrationRequest:
+      type: object
+      required: [email, password, displayName]
+      properties:
+        email:
+          type: string
+          format: email
+          maxLength: 320
+        password:
+          type: string
+          format: password
+          description: Length is measured in Unicode code points. Password content is used exactly as submitted.
+          minLength: 12
+          maxLength: 128
+          writeOnly: true
+        displayName:
+          type: string
+          description: Display name with leading and trailing whitespace removed, Unicode control characters rejected, and length measured in Unicode code points.
+          minLength: 1
+          maxLength: 120
+    RegistrationReceipt:
+      allOf:
+        - $ref: '#/components/schemas/VerificationChallenge'
+        - type: object
+          required: [userId, status]
+          properties:
+            userId:
+              type: string
+              format: uuid
+            status:
+              const: PENDING
+    VerificationChallenge:
+      type: object
+      required: [challengeId, emailMasked, expiresAt]
+      properties:
+        challengeId:
+          type: string
+          format: uuid
+        emailMasked:
+          type: string
+        expiresAt:
+          type: string
+          format: date-time
+    Problem:
+      type: object
+      required: [status, title, code]
+      properties:
+        status:
+          type: integer
+        title:
+          type: string
+        detail:
+          type: string
+        code:
+          type: string
+  responses:
+    InvalidRequest:
+      description: VALIDATION_FAILED for malformed input or OTP_INVALID for a challenge that cannot be accepted
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    AuthUnavailable:
+      description: AUTH_NOT_CONFIGURED when mail is unavailable or both OTP keys are absent. Partial or malformed OTP key configuration fails application startup.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'

@@ -1,5 +1,7 @@
 # Devsphere
 
+Theo dõi [lộ trình backend](docs/backend/delivery-plan.md) và [nhật ký triển khai](docs/backend/implementation-log.md).
+
 Backend Java 27 / Spring Boot 4.1.2, PostgreSQL 18.7. Database được quản lý bằng Flyway và kiểm tra mapping bằng Hibernate `validate`.
 
 ## Khởi động database và backend
@@ -48,3 +50,16 @@ Testcontainers tạo PostgreSQL riêng, kiểm tra SQL bootstrap trên volume m�
 Ảnh ERD, gallery và data dictionary đã xuất vẫn được giữ trong dự án. Các file Mermaid `.mmd` đi kèm là nguồn sơ đồ có thể chỉnh sửa và render bằng công cụ hỗ trợ Mermaid.
 
 Ứng dụng cung cấp nền tảng persistence và giao dịch. API nghiệp vụ, xác thực HTTP/WebSocket, GitHub/AI worker và solver sẽ sử dụng các module/port này ở các bước triển khai tính năng.
+
+## Backend đăng ký và xác minh email
+
+Các endpoint đăng ký và xác minh email gồm `POST /api/v1/auth/register`, `POST /api/v1/auth/verify-email` và `POST /api/v1/auth/verification/resend`, tuân thủ đúng [hợp đồng đăng ký và OTP](docs/api/email-registration.openapi.yaml). Giao diện frontend hiện vận hành với cơ chế xác thực giả lập (mock auth).
+
+Để bật đăng ký, cấu hình `AUTH_MAIL_FROM`, `SPRING_MAIL_HOST`, `SPRING_MAIL_PORT` và thông tin xác thực SMTP theo nhà cung cấp. Dùng TLS theo cấu hình Spring Mail của môi trường. Cấp hai khóa khác nhau cho `AUTH_OTP_HMAC_KEY` và `AUTH_OTP_ENCRYPTION_KEY`. Mỗi khóa là 32 byte ngẫu nhiên mã hóa Base64. Giữ chúng trong kho bí mật hoặc biến môi trường, ngoài Git. Duy trì cùng bộ khóa giữa các instance để các job đang chờ vẫn xử lý được.
+
+Khi cả hai khóa OTP để trống hoặc thiếu dịch vụ mail, endpoint đăng ký và gửi lại trả `503 AUTH_NOT_CONFIGURED`. Cấu hình một khóa OTP hoặc khóa sai định dạng làm backend báo lỗi khi khởi động. OTP hết hạn sau 10 phút. Worker xử lý retry SMTP từ database, nên một mã có thể được gửi lặp nếu tiến trình bị gián đoạn ngay sau khi SMTP nhận thư. Môi trường public cần giới hạn lưu lượng theo IP ở gateway ngoài giới hạn số lần thử và gửi lại theo tài khoản.
+
+Mỗi lần gửi thư kiểm tra mã, tài khoản và lease trước khi gọi SMTP. Nếu mã
+được xác minh hoặc thay thế sau lần kiểm tra đó, thư đang gửi có thể vẫn đến.
+Mã cũ mất hiệu lực ngay khi giao dịch xác minh hoặc gửi lại hoàn tất.
+Lần retry kiểm tra lại trạng thái và dọn dữ liệu OTP của job đã mất hiệu lực.

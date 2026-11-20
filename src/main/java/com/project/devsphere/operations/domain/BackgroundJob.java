@@ -89,6 +89,6 @@ public class BackgroundJob extends UuidEntity {
     @Column(name = "version", nullable = false)
     private Long version;
 
-    public enum JobKind { OUTBOX_EVENT, WEBHOOK_RETRY, NOTIFICATION_EMAIL, GITHUB_BACKFILL, REPORT_EXPORT, SCHEDULE_SOLVE, IDEMPOTENCY, BACKUP_CHECK }
+    public enum JobKind { OUTBOX_EVENT, WEBHOOK_RETRY, NOTIFICATION_EMAIL, GITHUB_BACKFILL, REPORT_EXPORT, SCHEDULE_SOLVE, IDEMPOTENCY, BACKUP_CHECK, AUTH_VERIFY_EMAIL }
     public enum Status { QUEUED, RUNNING, SUCCESS, FAILED }
 }
