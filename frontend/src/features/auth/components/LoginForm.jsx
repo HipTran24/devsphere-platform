@@ -49,7 +49,9 @@ export default function LoginForm() {
                     <label className={styles.checkboxLabel}><input type="checkbox" name="rememberMe" />Remember me</label>
                     <Link className={styles.textButton} href="/forgot-password">Forgot password?</Link>
                 </div>
-                <button className={styles.primary} type="submit" disabled={form.isSubmitting}>
+                <button className={`devsphere-button devsphere-button-primary ${styles.loginSubmitButton}`}
+                    type="submit"
+                    disabled={form.isSubmitting}>
                     <span aria-live="polite">{form.isSubmitting ? "Signing in…" : "Sign In"}</span><ArrowIcon />
                 </button>
             </form>

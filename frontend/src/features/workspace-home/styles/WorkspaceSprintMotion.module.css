@@ -1,0 +1,1232 @@
+.panel {
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: calc(100svh - var(--workspace-navbar-height));
+  width: 100%;
+  max-width: 100%;
+  margin-top: 20px;
+  background-color: var(--color-background);
+  background-image:
+    /* 1. Center origin point (soft focal seed at the middle) */
+    radial-gradient(
+      ellipse 36% 38% at 50% 60%,
+      rgba(52, 158, 96, 0.115) 0%,
+      rgba(28, 86, 54, 0.068) 42%,
+      rgba(12, 34, 22, 0.028) 72%,
+      rgba(0, 0, 0, 0) 100%
+    ),
+    /* 2. Mid-lower widening cone (gradually descending from center) */
+    radial-gradient(
+      ellipse 72% 48% at 50% 82%,
+      rgba(38, 114, 68, 0.125) 0%,
+      rgba(22, 64, 40, 0.078) 45%,
+      rgba(11, 28, 19, 0.038) 75%,
+      rgba(0, 0, 0, 0) 100%
+    ),
+    /* 3. Wide base fanning out to both bottom sides into soft charcoal-black */
+    radial-gradient(
+      ellipse 124% 56% at 50% 100%,
+      rgba(28, 78, 48, 0.13) 0%,
+      rgba(18, 48, 31, 0.088) 38%,
+      rgba(11, 24, 17, 0.055) 68%,
+      rgba(7, 12, 9, 0.028) 86%,
+      rgba(0, 0, 0, 0) 100%
+    ),
+    radial-gradient(rgba(227, 229, 225, 0.09) 1px, transparent 1px);
+  background-size: 100% 100%, 100% 100%, 100% 100%, 22px 22px;
+  background-position: center center;
+  color: var(--color-text);
+  font-family: var(--font-family-base);
+  padding: 18px 0;
+  box-sizing: border-box;
+  overflow: hidden;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-text) 10%, var(--color-background));
+}
+
+/* Fade the top of the glow into the page background. */
+.panel::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(
+      180deg,
+      #000000 0%,
+      rgba(0, 0, 0, 0.82) 9%,
+      rgba(0, 0, 0, 0.28) 24%,
+      transparent 42%
+    );
+  z-index: 1;
+}
+
+/* Subtle conical feathering from center downward to both bottom corners */
+.panel::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(
+      ellipse 56% 50% at 24% 88%,
+      rgba(34, 92, 58, 0.078) 0%,
+      rgba(16, 38, 25, 0.045) 52%,
+      rgba(8, 15, 11, 0.022) 78%,
+      rgba(0, 0, 0, 0) 100%
+    ),
+    radial-gradient(
+      ellipse 56% 50% at 76% 88%,
+      rgba(34, 92, 58, 0.078) 0%,
+      rgba(16, 38, 25, 0.045) 52%,
+      rgba(8, 15, 11, 0.022) 78%,
+      rgba(0, 0, 0, 0) 100%
+    ),
+    linear-gradient(
+      180deg,
+      rgba(0, 0, 0, 0) 0%,
+      rgba(0, 0, 0, 0) 40%,
+      rgba(14, 36, 24, 0.14) 68%,
+      rgba(11, 24, 17, 0.18) 84%,
+      rgba(7, 12, 9, 0.22) 94%,
+      rgba(0, 0, 0, 0) 100%
+    );
+  z-index: 1;
+}
+
+.starfieldLayer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(
+    180deg,
+    transparent 0%,
+    transparent 30%,
+    rgba(0, 0, 0, 0.35) 45%,
+    rgba(0, 0, 0, 0.88) 62%,
+    #000000 78%,
+    rgba(0, 0, 0, 0.85) 95%,
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    180deg,
+    transparent 0%,
+    transparent 30%,
+    rgba(0, 0, 0, 0.35) 45%,
+    rgba(0, 0, 0, 0.88) 62%,
+    #000000 78%,
+    rgba(0, 0, 0, 0.85) 95%,
+    transparent 100%
+  );
+}
+
+.twinkleStar {
+  position: absolute;
+  border-radius: 999px;
+  pointer-events: none;
+  opacity: 0.22;
+  animation-name: starTwinkle;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+}
+
+.twinkleStarWhite {
+  background-color: #FFFFFF;
+  box-shadow: 0 0 5px rgba(255, 255, 255, 0.85);
+}
+
+.twinkleStarMint {
+  background-color: #99F6E4;
+  box-shadow: 0 0 6px rgba(153, 246, 228, 0.9);
+}
+
+.twinkleStarTeal {
+  background-color: #2DD4BF;
+  box-shadow: 0 0 7px rgba(45, 212, 191, 0.95);
+}
+
+.twinkleStarGlint::before,
+.twinkleStarGlint::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(255, 255, 255, 0.75);
+  border-radius: 999px;
+}
+
+.twinkleStarGlint::before {
+  width: 7px;
+  height: 0.8px;
+}
+
+.twinkleStarGlint::after {
+  width: 0.8px;
+  height: 7px;
+}
+
+/* Delicate falling / shooting star streaking diagonally downward across the lower starry sky */
+.shootingStar {
+  position: absolute;
+  height: 1.3px;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.98) 0%,
+    rgba(153, 246, 228, 0.78) 24%,
+    rgba(45, 212, 191, 0.3) 62%,
+    rgba(45, 212, 191, 0) 100%
+  );
+  filter: drop-shadow(0 0 4px rgba(153, 246, 228, 0.75));
+  opacity: 0;
+  transform: rotate(-34deg) translate3d(0, 0, 0);
+  transform-origin: left center;
+  animation-name: meteorFall;
+  animation-timing-function: cubic-bezier(0.22, 0.61, 0.36, 1);
+  animation-iteration-count: infinite;
+}
+
+.shootingStar::before {
+  content: '';
+  position: absolute;
+  left: -1px;
+  top: 50%;
+  width: 2.6px;
+  height: 2.6px;
+  border-radius: 999px;
+  transform: translateY(-50%);
+  background: #FFFFFF;
+  box-shadow: 0 0 7px 1px rgba(153, 246, 228, 0.95);
+}
+
+@keyframes starTwinkle {
+  0%,
+  100% {
+    opacity: 0.22;
+    transform: scale(0.75);
+  }
+  50% {
+    opacity: 0.98;
+    transform: scale(1.24);
+  }
+}
+
+@keyframes meteorFall {
+  0% {
+    opacity: 0;
+    transform: rotate(-34deg) translate3d(0px, 0px, 0) scaleX(0.35);
+  }
+  8% {
+    opacity: 0.95;
+    transform: rotate(-34deg) translate3d(-20px, 0px, 0) scaleX(1);
+  }
+  28% {
+    opacity: 0;
+    transform: rotate(-34deg) translate3d(-125px, 0px, 0) scaleX(0.45);
+  }
+  100% {
+    opacity: 0;
+    transform: rotate(-34deg) translate3d(-125px, 0px, 0) scaleX(0.45);
+  }
+}
+
+/* Header bar with timeline phases & playback controls */
+.headerBar {
+  position: relative;
+  z-index: 10;
+  width: 100%;
+  max-width: 1280px;
+  padding: 0 28px 12px;
+  margin: 0 auto 2px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-text) 6%, transparent);
+  flex-wrap: wrap;
+}
+
+.phaseList {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.phaseBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10.5px;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  padding: 3.5px 9px;
+  border-radius: 999px;
+  background-color: color-mix(in srgb, var(--color-card) 65%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-text) 6%, transparent);
+  opacity: 0.5;
+  transition: opacity 220ms ease, color 220ms ease, border-color 220ms ease, background-color 220ms ease;
+}
+
+.phaseBadgeActive {
+  opacity: 1;
+  color: var(--color-text);
+  background-color: rgba(30, 32, 31, 0.95);
+  border-color: color-mix(in srgb, var(--color-text) 16%, transparent);
+}
+
+.phaseIndicator {
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background-color: var(--color-text-secondary);
+}
+
+.phaseIndicatorTeal {
+  background-color: var(--color-primary);
+  box-shadow: 0 0 7px color-mix(in srgb, var(--color-primary) 80%, transparent);
+}
+
+.phaseIndicatorRed {
+  background-color: var(--color-error);
+  box-shadow: 0 0 7px color-mix(in srgb, var(--color-error) 80%, transparent);
+}
+
+.controlsGroup {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.timeReadout {
+  font-size: 10.5px;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  font-variant-numeric: tabular-nums;
+  margin-right: 3px;
+}
+
+.controlBtn {
+  appearance: none;
+  background-color: var(--color-card);
+  color: var(--color-text);
+  border: 1px solid color-mix(in srgb, var(--color-text) 14%, transparent);
+  border-radius: 7px;
+  padding: 4px 9px;
+  font-family: inherit;
+  font-size: 10.5px;
+  font-weight: 500;
+  line-height: 1.2;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: border-color 160ms ease, background-color 160ms ease, color 160ms ease;
+}
+
+.controlBtn:hover {
+  background-color: #222322;
+  border-color: color-mix(in srgb, var(--color-primary) 45%, transparent);
+  color: var(--color-primary);
+}
+
+.controlBtn:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+/* Full-width 3D Perspective Viewport — safely contains all cards during zoom */
+.viewport {
+  position: relative;
+  z-index: 2;
+  width: 100%;
+  height: 392px;
+  perspective: 1200px;
+  perspective-origin: 50% 50%;
+  overflow: hidden;
+}
+
+/* Organic Staggered Constellation Stage centered with safe margins on all sides */
+.cameraRig {
+  position: relative;
+  width: 100%;
+  max-width: 1340px;
+  height: 100%;
+  margin: 0 auto;
+  transform-origin: 50% 50%;
+  transform-style: preserve-3d;
+  will-change: transform, opacity;
+}
+
+/* Inline SVG Connector Layer */
+.svgLayer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 2;
+  overflow: visible;
+}
+
+.wireAmbientBase {
+  fill: none;
+  stroke: color-mix(in srgb, var(--color-text) 14%, transparent);
+  stroke-width: 1.25;
+}
+
+.wireSecondary,
+.wireFlowBlue,
+.wireStateBlue,
+.wireStateAmber,
+.wireStateTeal,
+.wireStateRed,
+.wireTeal {
+  fill: none;
+  stroke: color-mix(in srgb, var(--color-text) 78%, transparent);
+  stroke-width: 1.45;
+  stroke-linecap: round;
+  transition: stroke 260ms ease, opacity 240ms ease;
+}
+
+.wireRed {
+  fill: none;
+  stroke: var(--color-error);
+  stroke-width: 1.65;
+  stroke-dasharray: 4.5 4.5;
+  stroke-linecap: round;
+  transition: opacity 220ms ease;
+}
+
+.wireStateWait,
+.wireDirectedMuted {
+  fill: none;
+  stroke: color-mix(in srgb, var(--color-text) 55%, transparent);
+  stroke-width: 1.4;
+  stroke-dasharray: 4 4;
+  stroke-linecap: round;
+  transition: stroke 260ms ease, opacity 240ms ease;
+}
+
+.wireGlowTeal,
+.wireGlowRed {
+  fill: none;
+  stroke: color-mix(in srgb, var(--color-text) 16%, transparent);
+  stroke-width: 4.2;
+  stroke-linecap: round;
+}
+
+.wireSuggestion {
+  fill: none;
+  stroke: var(--color-primary);
+  stroke-width: 1.45;
+  stroke-dasharray: 3.5 3.5;
+  stroke-linecap: round;
+  transition: opacity 220ms ease;
+}
+
+.portOuter,
+.portOuterIndigo,
+.portOuterBlue,
+.portOuterAmber,
+.portOuterTeal {
+  fill: #0D0E0E;
+  stroke: color-mix(in srgb, var(--color-text) 82%, transparent);
+  stroke-width: 1.3;
+  transition: stroke 260ms ease, fill 260ms ease;
+}
+
+.portOuterRed {
+  fill: #2E1115;
+  stroke: var(--color-error);
+  stroke-width: 1.35;
+  transition: stroke 260ms ease, fill 260ms ease;
+}
+
+.portInnerTeal {
+  fill: var(--color-text);
+}
+
+.pulseTeal {
+  fill: var(--color-text);
+  stroke: color-mix(in srgb, var(--color-text) 95%, transparent);
+  stroke-width: 1.2;
+  filter: drop-shadow(0 0 7px color-mix(in srgb, var(--color-text) 90%, transparent));
+}
+
+.pulseRed {
+  fill: #FFD1D4;
+  stroke: var(--color-error);
+  stroke-width: 1.2;
+  filter: drop-shadow(0 0 7px color-mix(in srgb, var(--color-error) 95%, transparent));
+}
+
+/*
+ * ORGANIC STAGGERED CONSTELLATION LAYOUT
+ * Every card has a unique (left, top) coordinate (no rigid rows or columns),
+ * with DEV-18 and REL-04 shifted right and all horizontal intervals evenly balanced.
+ */
+
+/* 1. Left Hub (middle-left): SPRINT 04 · Auth Core */
+.slotSprint {
+  position: absolute;
+  left: 4.5%;
+  top: 150px;
+  width: 164px;
+  z-index: 3;
+  transform-style: preserve-3d;
+  will-change: transform, opacity;
+}
+
+/* 2. Upper-Left Staggered Node: GIT-09 · OAuth Schema */
+.slotGit09 {
+  position: absolute;
+  left: 27.5%;
+  top: 58px;
+  width: 162px;
+  z-index: 3;
+  transform-style: preserve-3d;
+  will-change: transform, opacity;
+}
+
+/* 3. Lower-Left Staggered Node (shifted left & lower): DEV-21 · SDK Guide Docs */
+.slotDev21 {
+  position: absolute;
+  left: 23.5%;
+  top: 276px;
+  width: 162px;
+  z-index: 3;
+  transform-style: preserve-3d;
+  will-change: transform, opacity;
+}
+
+/* 4. Center Focal Node: DEV-12 · Auth API Fix */
+.slotDev12 {
+  position: absolute;
+  left: 48.5%;
+  top: 138px;
+  width: 168px;
+  z-index: 4;
+  transform-style: preserve-3d;
+  will-change: transform, opacity;
+}
+
+/* Floating Reassign Badge above DEV-12 (top: 36px -> 46px clear gap above DEV-12) */
+.slotSuggestion {
+  position: absolute;
+  left: 48.5%;
+  top: 36px;
+  width: 168px;
+  z-index: 6;
+  pointer-events: none;
+  will-change: transform, opacity;
+}
+
+/* 5. Lower-Center Staggered Node (shifted right of DEV-12): SEC-07 · JWT Token Audit */
+.slotSec07 {
+  position: absolute;
+  left: 55%;
+  top: 288px;
+  width: 166px;
+  z-index: 3;
+  transform-style: preserve-3d;
+  will-change: transform, opacity;
+}
+
+/* 6. Upper-Right Staggered Node (shifted right as requested): DEV-18 · Login E2E Suite */
+.slotDev18 {
+  position: absolute;
+  left: 76.5%;
+  top: 76px;
+  width: 166px;
+  z-index: 4;
+  transform-style: preserve-3d;
+  will-change: transform, opacity;
+}
+
+/* 7. Lower-Right Staggered Node (shifted right as requested): REL-04 · Prod Release */
+.slotRel04 {
+  position: absolute;
+  left: 82.5%;
+  top: 228px;
+  width: 164px;
+  z-index: 3;
+  transform-style: preserve-3d;
+  will-change: transform, opacity;
+}
+
+/*
+ * SLEEK CHARCOAL-GLASS CARD WITH HARMONIOUS MULTI-TONE ACCENTS
+ * Avoids monotone green overload by keeping card surfaces neutral dark charcoal
+ * and using semantic accents: Indigo (Sprint), Blue (Active), Amber (Review), Red (Blocked), Slate (Wait), Teal (Done)
+ */
+.card {
+  width: 100%;
+  background: linear-gradient(165deg, rgba(26, 27, 29, 0.96) 0%, rgba(15, 16, 17, 0.98) 100%);
+  border: 1px solid color-mix(in srgb, var(--color-text) 9%, transparent);
+  border-radius: 11px;
+  padding: 8px 10px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--color-text) 5%, transparent),
+    0 10px 22px color-mix(in srgb, var(--color-background) 76%, transparent);
+  transform: translate3d(0, 0, 0);
+  transition:
+    transform 380ms cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 240ms ease,
+    box-shadow 360ms ease,
+    background 360ms ease;
+  backface-visibility: hidden;
+  will-change: transform, box-shadow;
+}
+
+.cardLifted {
+  transform: translate3d(0, -3.5px, 0);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--color-text) 10%, transparent),
+    0 15px 28px color-mix(in srgb, var(--color-background) 85%, transparent);
+}
+
+.cardSprintHub,
+.cardActiveBlue,
+.cardReviewAmber,
+.cardActiveTeal,
+.cardDoneTeal,
+.cardWaitingRed {
+  border-color: color-mix(in srgb, var(--color-text) 9%, transparent);
+}
+
+.cardBlockedRed {
+  border-color: color-mix(in srgb, var(--color-error) 82%, transparent);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--color-error) 20%, transparent),
+    0 0 14px color-mix(in srgb, var(--color-error) 14%, transparent),
+    0 14px 26px color-mix(in srgb, var(--color-background) 82%, transparent);
+}
+
+/* Row 1: Small 16px Icon + Code on Left, Status Pill on Right */
+.cardTopRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+}
+
+.iconIdentity {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+.iconBox {
+  width: 16px;
+  height: 16px;
+  border-radius: 4.5px;
+  background-color: color-mix(in srgb, var(--color-text) 5%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-text) 12%, transparent);
+  color: #94A3B8;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: color 220ms ease, background-color 220ms ease, border-color 220ms ease;
+}
+
+.iconBoxIndigo {
+  background-color: rgba(129, 140, 248, 0.14);
+  border-color: rgba(129, 140, 248, 0.36);
+  color: #A5B4FC;
+}
+
+.iconBoxBlue {
+  background-color: rgba(56, 189, 248, 0.13);
+  border-color: rgba(56, 189, 248, 0.34);
+  color: #38BDF8;
+}
+
+.iconBoxAmber {
+  background-color: rgba(251, 191, 36, 0.14);
+  border-color: rgba(251, 191, 36, 0.36);
+  color: #FBBF24;
+}
+
+.iconBoxTeal {
+  background-color: color-mix(in srgb, var(--color-primary) 12%, transparent);
+  border-color: color-mix(in srgb, var(--color-primary) 32%, transparent);
+  color: var(--color-primary);
+}
+
+.iconBoxRed {
+  background-color: color-mix(in srgb, var(--color-error) 15%, transparent);
+  border-color: color-mix(in srgb, var(--color-error) 40%, transparent);
+  color: var(--color-error);
+}
+
+.nodeSvgIcon {
+  width: 9.5px;
+  height: 9.5px;
+  stroke-width: 2.2;
+}
+
+.codeLabel {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--color-text);
+  line-height: 1.15;
+  white-space: nowrap;
+}
+
+/* Row 2: Dedicated Full-Width Title */
+.cardTitle {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--color-text);
+  line-height: 1.25;
+  margin: 0;
+  white-space: nowrap;
+}
+
+/* Minimal Icon Status Badge */
+.statusIconBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 8.5px;
+  font-weight: 600;
+  padding: 1.5px 5.5px;
+  border-radius: 999px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: color 240ms ease, background-color 240ms ease, border-color 240ms ease, transform 320ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.statusGlyphSvg {
+  width: 9px;
+  height: 9px;
+  stroke-width: 2.3;
+  flex-shrink: 0;
+}
+
+.badgeNeutral {
+  color: #94A3B8;
+  background-color: rgba(148, 163, 184, 0.09);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+.badgeIndigo {
+  color: #A5B4FC;
+  background-color: rgba(129, 140, 248, 0.13);
+  border: 1px solid rgba(129, 140, 248, 0.32);
+}
+
+.badgeBlue {
+  color: #38BDF8;
+  background-color: rgba(56, 189, 248, 0.12);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+}
+
+.badgeReview {
+  color: #FBBF24;
+  background-color: rgba(251, 191, 36, 0.13);
+  border: 1px solid rgba(251, 191, 36, 0.34);
+}
+
+.badgeTeal {
+  color: var(--color-primary);
+  background-color: color-mix(in srgb, var(--color-primary) 11%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-primary) 28%, transparent);
+}
+
+.badgeRed {
+  color: var(--color-error);
+  background-color: color-mix(in srgb, var(--color-error) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-error) 34%, transparent);
+}
+
+/* Row 3: Visual Micro-Widgets inside cards */
+.visualBarRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 3.5px 6px;
+  border-radius: 6px;
+  background-color: color-mix(in srgb, var(--color-background) 36%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-text) 5%, transparent);
+}
+
+/* Segmented progress blocks */
+.segmentGroup {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex: 1;
+}
+
+.segmentBar {
+  height: 3.5px;
+  flex: 1;
+  border-radius: 999px;
+  background-color: color-mix(in srgb, var(--color-text) 11%, transparent);
+  transition: background-color 240ms ease, box-shadow 240ms ease;
+}
+
+.segmentBarBlue {
+  background-color: #38BDF8;
+  box-shadow: 0 0 5px rgba(56, 189, 248, 0.4);
+}
+
+.segmentBarAmber {
+  background-color: #FBBF24;
+  box-shadow: 0 0 5px rgba(251, 191, 36, 0.4);
+}
+
+.segmentBarTeal {
+  background-color: var(--color-primary);
+  box-shadow: 0 0 5px color-mix(in srgb, var(--color-primary) 38%, transparent);
+}
+
+.segmentBarRed {
+  background-color: var(--color-error);
+  box-shadow: 0 0 5px color-mix(in srgb, var(--color-error) 45%, transparent);
+}
+
+/* Circular ring inside Sprint Hub */
+.sprintRingWrap {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 3.5px 6px;
+  border-radius: 6px;
+  background-color: color-mix(in srgb, var(--color-background) 36%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-text) 5%, transparent);
+}
+
+.ringLeft {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.ringSvg {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  transform: rotate(-90deg);
+}
+
+.ringTrack {
+  fill: none;
+  stroke: color-mix(in srgb, var(--color-text) 12%, transparent);
+  stroke-width: 3.8;
+}
+
+.ringFill {
+  fill: none;
+  stroke: #38BDF8;
+  stroke-width: 3.8;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 360ms ease;
+}
+
+.ringFraction {
+  font-size: 9.5px;
+  font-weight: 700;
+  color: var(--color-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.nodeDotsCluster {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.miniDot {
+  width: 4.5px;
+  height: 4.5px;
+  border-radius: 999px;
+  background-color: color-mix(in srgb, var(--color-text) 20%, transparent);
+}
+
+.miniDotBlue {
+  background-color: #38BDF8;
+}
+
+.miniDotAmber {
+  background-color: #FBBF24;
+}
+
+.miniDotTeal {
+  background-color: var(--color-primary);
+}
+
+.miniDotRed {
+  background-color: var(--color-error);
+}
+
+/* Visual Commit / Version Pills */
+.monoTag {
+  font-family: inherit;
+  font-size: 8.5px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  letter-spacing: 0.02em;
+}
+
+.monoTagTeal {
+  color: var(--color-primary);
+}
+
+/* Signal wave bars for Deploy & Security cards */
+.waveBars {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 2.5px;
+  height: 10px;
+}
+
+.waveBar {
+  width: 2.5px;
+  border-radius: 2px;
+  background-color: rgba(148, 163, 184, 0.22);
+  transition: background-color 240ms ease;
+}
+
+.waveBarBlue {
+  background-color: #38BDF8;
+}
+
+.waveBarAmber {
+  background-color: #FBBF24;
+}
+
+.waveBarTeal {
+  background-color: var(--color-primary);
+}
+
+/* Avatar & Visual Transfer Pill with Unified Person Icon */
+.avatarBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 2.5px;
+  padding: 1.5px;
+  border-radius: 999px;
+  background-color: color-mix(in srgb, var(--color-text) 4.5%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-text) 8%, transparent);
+  color: var(--color-text);
+  font-size: 8px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.avatarBadgeActive {
+  padding: 1.5px 4.5px 1.5px 2px;
+  background-color: color-mix(in srgb, var(--color-text) 8%, transparent);
+  border-color: color-mix(in srgb, var(--color-text) 22%, transparent);
+  color: var(--color-text);
+}
+
+.avatarCircle {
+  width: 15px;
+  height: 15px;
+  border-radius: 999px;
+  background-color: color-mix(in srgb, var(--color-text) 13%, transparent);
+  color: var(--color-text);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.avatarCircleTeal {
+  background-color: var(--color-primary);
+  color: #041F1C;
+}
+
+.avatarCircleRed {
+  background-color: color-mix(in srgb, var(--color-error) 22%, transparent);
+  color: var(--color-error);
+}
+
+.avatarCircleMuted {
+  opacity: 0.5;
+}
+
+.userGlyphSvg {
+  width: 9.5px;
+  height: 9.5px;
+  stroke-width: 2.2;
+}
+
+/* Compact Single-Row / Dual-Row Reassign Badge */
+.suggestionPopover {
+  width: 100%;
+  background: linear-gradient(165deg, rgba(26, 27, 29, 0.96) 0%, rgba(15, 16, 17, 0.98) 100%);
+  border: 1px solid color-mix(in srgb, var(--color-primary) 78%, transparent);
+  border-radius: 9px;
+  padding: 5px 8px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--color-primary) 18%, transparent),
+    0 0 12px color-mix(in srgb, var(--color-primary) 12%, transparent),
+    0 8px 18px color-mix(in srgb, var(--color-background) 80%, transparent);
+}
+
+.suggestionHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+}
+
+.suggestionTitleWrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 3.5px;
+  font-size: 8.5px;
+  font-weight: 700;
+  color: #99F6E4;
+  letter-spacing: 0.02em;
+}
+
+.pmApprovedBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 7px;
+  font-weight: 700;
+  line-height: 1;
+  color: #99F6E4;
+  background-color: rgba(153, 246, 228, 0.12);
+  border: 1px solid rgba(153, 246, 228, 0.3);
+  padding: 1.5px 4px;
+  border-radius: 999px;
+  white-space: nowrap;
+  transition: opacity 200ms ease, transform 200ms ease;
+}
+
+.pmCheckIcon {
+  width: 7px;
+  height: 7px;
+  stroke-width: 2.8;
+  flex-shrink: 0;
+}
+
+.suggestionVisualSwap {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  padding: 2.5px 6px;
+  border-radius: 5px;
+  background-color: color-mix(in srgb, var(--color-background) 35%, transparent);
+  font-size: 8px;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.swapUser {
+  display: inline-flex;
+  align-items: center;
+  gap: 3.5px;
+}
+
+.swapNodeBadge {
+  width: 15px;
+  height: 15px;
+  border-radius: 4.5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.swapNodeLocked {
+  background-color: color-mix(in srgb, var(--color-error) 15%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-error) 38%, transparent);
+  color: var(--color-error);
+}
+
+.swapNodeUnlocked {
+  background-color: color-mix(in srgb, var(--color-primary) 15%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-primary) 40%, transparent);
+  color: var(--color-primary);
+}
+
+.swapArrowIcon {
+  color: var(--color-primary);
+  font-size: 9.5px;
+  font-weight: 700;
+}
+
+/* Inline Canvas Wire Pill */
+.wireLabel {
+  font-size: 8.5px;
+  font-weight: 600;
+  fill: var(--color-text-secondary);
+}
+
+.wireLabelTeal {
+  fill: var(--color-primary);
+}
+
+.wireLabelAmber {
+  fill: #FBBF24;
+}
+
+.wireLabelRed {
+  fill: var(--color-error);
+}
+
+.wireLabelBg {
+  fill: #0C0D0C;
+  stroke: color-mix(in srgb, var(--color-text) 13%, transparent);
+  stroke-width: 1;
+  rx: 5;
+}
+
+/* Reduced Motion Static Explanation */
+.reducedMotionSummary {
+  position: relative;
+  z-index: 5;
+  max-width: 1200px;
+  margin: 12px auto 0;
+  padding: 11px 16px;
+  border-radius: 10px;
+  background-color: var(--color-card);
+  border: 1px solid color-mix(in srgb, var(--color-text) 12%, transparent);
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--color-text-secondary);
+}
+
+.reducedMotionHeading {
+  font-weight: 600;
+  color: var(--color-text);
+  margin-bottom: 2px;
+}
+
+/* Responsive Tablet & Mobile */
+@media (max-width: 960px) {
+  .headerBar {
+    padding: 0 14px 10px;
+  }
+
+  .viewport {
+    height: 380px;
+  }
+
+  .slotSprint {
+    left: 2.5%;
+    top: 146px;
+    width: 132px;
+  }
+
+  .slotGit09 {
+    left: 25%;
+    top: 56px;
+    width: 132px;
+  }
+
+  .slotDev21 {
+    left: 21%;
+    top: 266px;
+    width: 132px;
+  }
+
+  .slotDev12 {
+    left: 47.5%;
+    top: 132px;
+    width: 136px;
+  }
+
+  .slotSuggestion {
+    left: 47.5%;
+    top: 32px;
+    width: 136px;
+  }
+
+  .slotSec07 {
+    left: 53.5%;
+    top: 278px;
+    width: 136px;
+  }
+
+  .slotDev18 {
+    left: 74.5%;
+    top: 72px;
+    width: 136px;
+  }
+
+  .slotRel04 {
+    left: 80.5%;
+    top: 218px;
+    width: 136px;
+  }
+
+  .card {
+    padding: 6px 8px;
+    gap: 4px;
+  }
+
+  .cardTitle {
+    font-size: 10.5px;
+  }
+
+  .reducedMotionSummary {
+    margin: 12px 14px 0;
+    grid-template-columns: 1fr;
+  }
+}
+
+.viewport:focus-visible {
+  outline-offset: -2px;
+}
+
+@media (max-width: 960px) {
+  .panel {
+    margin-top: 16px;
+  }
+
+  .viewport {
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+
+  .cameraRig {
+    min-width: 880px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shootingStar {
+    display: none;
+  }
+
+
+  .panel *,
+  .panel *::before,
+  .panel *::after {
+    animation: none;
+    transition: none;
+  }
+}

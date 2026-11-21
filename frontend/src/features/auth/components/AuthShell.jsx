@@ -67,8 +67,8 @@ export default function AuthShell({ mode = "register", children }) {
             <div className={`${styles.card} ${isLogin ? styles.loginCard : ""}`}>
                 <aside className={styles.introPanel}>
                     <span className={`${styles.borderBeam} ${transitioning ? styles.borderBeamPaused : ""}`} aria-hidden="true" />
-                    <div className={styles.brand}>
-                        <span className={styles.logoFrame} aria-hidden="true" />
+                    <div className="devsphere-brand">
+                        <span className="devsphere-logo-frame" aria-hidden="true" />
                         <span>DEVSPHERE</span>
                     </div>
                     <div className={styles.introContent}>
@@ -86,12 +86,12 @@ export default function AuthShell({ mode = "register", children }) {
                 <section className={styles.formPanel} inert={transitioning} aria-busy={transitioning}>
                     <div className={styles.formStage}>
                         {children || <>
-                        <div className={`${styles.formView} ${styles.registerView} ${isLogin ? styles.inactiveView : ""}`} inert={isLogin} aria-hidden={isLogin}>
-                            <RegisterForm />
-                        </div>
-                        <div className={`${styles.formView} ${styles.loginView} ${!isLogin ? styles.inactiveView : ""}`} inert={!isLogin} aria-hidden={!isLogin}>
-                            <LoginForm />
-                        </div>
+                            <div className={`${styles.formView} ${styles.registerView} ${isLogin ? styles.inactiveView : ""}`} inert={isLogin} aria-hidden={isLogin}>
+                                <RegisterForm />
+                            </div>
+                            <div className={`${styles.formView} ${styles.loginView} ${!isLogin ? styles.inactiveView : ""}`} inert={!isLogin} aria-hidden={!isLogin}>
+                                <LoginForm />
+                            </div>
                         </>}
                     </div>
                 </section>
