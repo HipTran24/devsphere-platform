@@ -82,7 +82,8 @@ public class SessionSecurityConfiguration {
                     ROUTES.matcher(HttpMethod.POST, "/api/v1/auth/verification/resend"),
                     ROUTES.matcher(HttpMethod.POST, "/api/v1/auth/forgot-password"),
                     ROUTES.matcher(HttpMethod.POST, "/api/v1/auth/forgot-password/verify"),
-                    ROUTES.matcher(HttpMethod.POST, "/api/v1/auth/reset-password")
+                    ROUTES.matcher(HttpMethod.POST, "/api/v1/auth/reset-password"),
+                    ROUTES.matcher(HttpMethod.POST, "/api/v1/github/webhook")
                 )
             )
             .sessionManagement(session -> session
@@ -99,6 +100,7 @@ public class SessionSecurityConfiguration {
                         writeProblem(response, HttpServletResponse.SC_FORBIDDEN, "Forbidden", "ACCESS_DENIED"))
             )
             .authorizeHttpRequests(auth -> auth
+                .requestMatchers(HttpMethod.POST, "/api/v1/github/webhook").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/v1/auth/register").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/v1/auth/verify-email").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/v1/auth/verification/resend").permitAll()

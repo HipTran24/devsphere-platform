@@ -133,7 +133,21 @@ public class WorkItem extends UuidEntity {
     @Column(name = "version", nullable = false)
     private Long version;
 
-    public enum Type { EPIC, USER_STORY, TASK, SUBTASK, BUG }
+    public enum Type {
+        EPIC, USER_STORY, TASK, SUBTASK, BUG;
+
+        @com.fasterxml.jackson.annotation.JsonCreator
+        public static Type fromString(String value) {
+            if (value == null || value.isBlank()) {
+                return null;
+            }
+            String normalized = value.trim().toUpperCase(java.util.Locale.ROOT);
+            if ("STORY".equals(normalized)) {
+                return USER_STORY;
+            }
+            return Type.valueOf(normalized);
+        }
+    }
     public enum WorkKind { CODE, NON_CODE }
     public enum Status { TO_DO, IN_PROGRESS, IN_REVIEW, DONE }
     public enum Priority { LOW, MEDIUM, HIGH, CRITICAL }
