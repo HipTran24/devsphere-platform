@@ -1,6 +1,6 @@
 # Devsphere data dictionary
 
-Captured from the running PostgreSQL catalog. SQL migrations are the source of schema changes.
+Captured from the PostgreSQL catalog at the V006 persistence baseline. See the [migration history](migration-commits.md) for later changes. SQL migrations are the source of schema changes.
 
 ## acceptance_criteria
 

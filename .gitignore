@@ -37,3 +37,7 @@ build/
 
 ### VS Code ###
 .vscode/
+
+# Local workflow evidence and Python cache
+.ai-runs/
+__pycache__/
