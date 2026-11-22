@@ -45,8 +45,11 @@ public class SessionSecurityConfiguration {
     private static final RequestMatcher CURRENT_USER = ROUTES.matcher(HttpMethod.GET, "/api/v1/auth/me");
     private static final RequestMatcher ADMIN_ENDPOINTS = ROUTES.matcher("/api/v1/admin/**");
     private static final RequestMatcher ADMIN_PATCH_ENDPOINTS = ROUTES.matcher(HttpMethod.PATCH, "/api/v1/admin/**");
+    private static final RequestMatcher WORKSPACE_ENDPOINTS = ROUTES.matcher("/api/v1/workspaces/**");
+    private static final RequestMatcher WORKSPACE_POST_ENDPOINTS = ROUTES.matcher(HttpMethod.POST, "/api/v1/workspaces/**");
+    private static final RequestMatcher WORKSPACE_PATCH_ENDPOINTS = ROUTES.matcher(HttpMethod.PATCH, "/api/v1/workspaces/**");
     private static final RequestMatcher BEARER_ENDPOINTS =
-            new OrRequestMatcher(CURRENT_USER, LIST_SESSIONS, REVOKE_SESSION, ADMIN_ENDPOINTS);
+            new OrRequestMatcher(CURRENT_USER, LIST_SESSIONS, REVOKE_SESSION, ADMIN_ENDPOINTS, WORKSPACE_ENDPOINTS);
 
     @Bean
     public SecurityFilterChain securityFilterChain(
@@ -70,6 +73,8 @@ public class SessionSecurityConfiguration {
                 .ignoringRequestMatchers(
                     REVOKE_SESSION,
                     ADMIN_PATCH_ENDPOINTS,
+                    WORKSPACE_POST_ENDPOINTS,
+                    WORKSPACE_PATCH_ENDPOINTS,
                     ROUTES.matcher(HttpMethod.POST, "/api/v1/auth/register"),
                     ROUTES.matcher(HttpMethod.POST, "/api/v1/auth/verify-email"),
                     ROUTES.matcher(HttpMethod.POST, "/api/v1/auth/verification/resend"),
