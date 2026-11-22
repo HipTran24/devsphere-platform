@@ -108,4 +108,28 @@ public class WorkspaceProjectException extends RuntimeException {
     public static WorkspaceProjectException taskAcceptanceRequiresPm(String message) {
         return new WorkspaceProjectException(HttpStatus.FORBIDDEN, "TASK_ACCEPTANCE_REQUIRES_PM", message);
     }
+
+    public static WorkspaceProjectException activeSprintExists(String message) {
+        return new WorkspaceProjectException(HttpStatus.CONFLICT, "ACTIVE_SPRINT_EXISTS", message);
+    }
+
+    public static WorkspaceProjectException sprintClosed(String message) {
+        return new WorkspaceProjectException(HttpStatus.CONFLICT, "SPRINT_CLOSED", message);
+    }
+
+    public static WorkspaceProjectException invalidSprintDates(String message) {
+        return new WorkspaceProjectException(HttpStatus.BAD_REQUEST, "INVALID_SPRINT_DATES", message);
+    }
+
+    public static WorkspaceProjectException sprintNotPlanned(String message) {
+        return new WorkspaceProjectException(HttpStatus.CONFLICT, "SPRINT_NOT_PLANNED", message);
+    }
+
+    public static WorkspaceProjectException sprintNotActive(String message) {
+        return new WorkspaceProjectException(HttpStatus.CONFLICT, "SPRINT_NOT_ACTIVE", message);
+    }
+
+    public static WorkspaceProjectException cannotModifyDoneItemSprint(String message) {
+        return new WorkspaceProjectException(HttpStatus.CONFLICT, "CANNOT_MODIFY_DONE_ITEM_SPRINT", message);
+    }
 }
