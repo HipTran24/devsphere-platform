@@ -1,7 +1,18 @@
-export function validateEmail(value) {
-    if (!value.trim()) return "Enter your email address.";
-    if (value.trim().length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim())) return "Enter a valid email address.";
+export function validateEmail(value, {
+    requiredMessage = "Enter your email address.",
+    invalidMessage = "Enter a valid email address.",
+} = {}) {
+    const email = value.trim();
+    if (!email) return requiredMessage;
+    if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return invalidMessage;
     return "";
+}
+
+export function validateAuthEmail(value) {
+    return validateEmail(value, {
+        requiredMessage: "Enter your email.",
+        invalidMessage: "Enter a valid email.",
+    });
 }
 
 export function validatePassword(value) {
@@ -14,21 +25,27 @@ export function validateNewPassword({ password, confirmPassword }) {
     const errors = {};
     const passwordError = validatePassword(password);
     if (passwordError) errors.password = passwordError;
-    if (!confirmPassword) errors.confirmPassword = "Confirm your password.";
-    else if (password !== confirmPassword) errors.confirmPassword = "Passwords don’t match.";
+    const confirmationError = validatePasswordConfirmation(password, confirmPassword);
+    if (confirmationError) errors.confirmPassword = confirmationError;
     return errors;
+}
+
+function validatePasswordConfirmation(password, confirmPassword) {
+    if (!confirmPassword) return "Confirm your password.";
+    if (password !== confirmPassword) return "Passwords don’t match.";
+    return "";
 }
 
 export function validateRegistration(values) {
     const errors = {};
     if (!values.displayName.trim()) errors.fullName = "Enter your full name.";
     else if (values.displayName.trim().length > 120) errors.fullName = "Use no more than 120 characters.";
-    const emailError = !values.email.trim() ? "Enter your email." : validateEmail(values.email) ? "Enter a valid email." : "";
+    const emailError = validateAuthEmail(values.email);
     if (emailError) errors.email = emailError;
     const passwordError = validatePassword(values.password);
     if (passwordError) errors.password = passwordError;
-    if (!values.confirmPassword) errors.confirmPassword = "Confirm your password.";
-    else if (values.password !== values.confirmPassword) errors.confirmPassword = "Passwords don’t match.";
+    const confirmationError = validatePasswordConfirmation(values.password, values.confirmPassword);
+    if (confirmationError) errors.confirmPassword = confirmationError;
     if (!values.terms) errors.terms = "Accept the terms to continue.";
     return errors;
 }
@@ -48,7 +65,7 @@ export function registrationErrorMessage(errors) {
 
 export function validateLogin({ email, password }) {
     const errors = {};
-    const emailError = !email.trim() ? "Enter your email." : validateEmail(email) ? "Enter a valid email." : "";
+    const emailError = validateAuthEmail(email);
     if (emailError) errors.email = emailError;
     if (!password) errors.password = "Enter your password.";
     return errors;

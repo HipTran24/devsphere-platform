@@ -1,0 +1,85 @@
+.hero {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    padding: 24px 24px 0;
+    text-align: center;
+    margin-top: 24px;
+}
+
+.title {
+    max-width: 100%;
+    margin: 0;
+    color: var(--color-text);
+    font-size: 41px;
+    font-weight: 600;
+    line-height: 48px;
+    letter-spacing: 0.02rem;
+}
+
+.accent {
+    color: var(--color-primary);
+}
+
+.description {
+    max-width: 100%;
+    margin: 0;
+    font-weight: 400;
+    color: var(--color-text-secondary);
+    font-size: 16px;
+    line-height: 24px;
+    letter-spacing: 0.02rem;
+}
+
+.buttons {
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+    margin-top: 8px;
+}
+
+.buttons > :is(button, a) {
+    padding: 6px 16px;
+    border: 0;
+    border-radius: 48px;
+    font-size: 16px;
+    font-weight: 400;
+    line-height: 24px;
+    color: #e3e5e1;
+    background-color: #111511;
+    box-shadow: inset 0 0 0 1px rgb(255 255 255 / 5%);
+    backdrop-filter: blur(6px);
+    transition: background-color 150ms, color 150ms;
+}
+
+.buttons>.primaryButton {
+    color: #10120f;
+    background-color: #e3e5e1;
+    font-weight: 500;
+    box-shadow: inset 0 0 0 1px rgb(0 0 0 / 5%);
+    backdrop-filter: none;
+}
+
+.buttons > :is(button, a):hover {
+    background-color: rgb(255 255 255 / 10%);
+}
+
+.buttons>.primaryButton:hover {
+    background-color: #fff;
+}
+
+@media (max-width: 767px) {
+    .hero {
+        padding-top: 32px;
+    }
+
+    .title {
+        font-size: 37px;
+        line-height: 40px;
+    }
+
+    .description {
+        font-size: 17px;
+    }
+}
