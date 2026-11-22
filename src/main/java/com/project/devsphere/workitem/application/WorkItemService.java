@@ -1,5 +1,7 @@
 package com.project.devsphere.workitem.application;
 
+import com.project.devsphere.codequality.api.dto.QualityGateResponse;
+import com.project.devsphere.codequality.application.QualityGateService;
 import com.project.devsphere.identity.application.AccessPolicy;
 import com.project.devsphere.identity.application.ProjectScope;
 import com.project.devsphere.identity.application.SessionService;
@@ -35,10 +37,15 @@ public class WorkItemService {
 
     private final JdbcTemplate jdbcTemplate;
     private final AccessPolicy accessPolicy;
+    private final QualityGateService qualityGateService;
 
-    public WorkItemService(JdbcTemplate jdbcTemplate, AccessPolicy accessPolicy) {
+    public WorkItemService(
+            JdbcTemplate jdbcTemplate,
+            AccessPolicy accessPolicy,
+            QualityGateService qualityGateService) {
         this.jdbcTemplate = Objects.requireNonNull(jdbcTemplate, "jdbcTemplate must not be null");
         this.accessPolicy = Objects.requireNonNull(accessPolicy, "accessPolicy must not be null");
+        this.qualityGateService = Objects.requireNonNull(qualityGateService, "qualityGateService must not be null");
     }
 
     private static final RowMapper<WorkItemResponse> WORK_ITEM_MAPPER = (rs, rowNum) -> {
@@ -118,13 +125,15 @@ public class WorkItemService {
                     is_blocked, blocked_reason, labels, backlog_rank, claimed_progress,
                     required_skills, progress_evidence, due_at, created_at, updated_at, version
                 ) VALUES (
-                    ?, ?, ?, 'CODE', ?, ?, 'TO_DO', ?,
+                    ?, ?, ?, ?, ?, ?, 'TO_DO', ?,
                     ?, ?, ?, ?, ?,
                     ?, ?, ?, 0,
                     false, NULL, ?, ?, 0,
                     '[]'::jsonb, '{"schemaVersion":1}'::jsonb, ?, now(), now(), 0
                 )
                 """;
+
+        WorkItem.WorkKind workKind = request.workKind() != null ? request.workKind() : WorkItem.WorkKind.NON_CODE;
 
         try {
             setActorContext(principal.userId());
@@ -133,6 +142,7 @@ public class WorkItemService {
                     id,
                     projectId,
                     request.type().name(),
+                    workKind.name(),
                     request.title().trim(),
                     request.description() != null ? request.description() : "",
                     request.priority() != null ? request.priority().name() : "MEDIUM",
@@ -505,6 +515,14 @@ public class WorkItemService {
 
         if (current.status() != WorkItem.Status.IN_REVIEW) {
             throw WorkspaceProjectException.invalidStateTransition("Only items in IN_REVIEW status can be accepted to DONE");
+        }
+
+        // Quality Gate evaluation for CODE and NON_CODE tasks (Part H3)
+        QualityGateResponse gate = qualityGateService.evaluateQualityGate(principal, workspaceId, projectId, workItemId);
+        if (!gate.passed()) {
+            throw WorkspaceProjectException.qualityGateEvidenceMissing(
+                    "Quality gate evaluation failed: " + gate.details()
+            );
         }
 
         String sql = """

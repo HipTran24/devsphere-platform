@@ -17,6 +17,7 @@ public record CreateWorkItemRequest(
         String title,
 
         String description,
+        WorkItem.WorkKind workKind,
         UUID parentId,
         UUID requirementId,
         UUID sprintId,
@@ -38,5 +39,26 @@ public record CreateWorkItemRequest(
         if (labels == null) {
             labels = new String[0];
         }
+        if (workKind == null) {
+            workKind = WorkItem.WorkKind.NON_CODE;
+        }
+    }
+
+    public CreateWorkItemRequest(
+            WorkItem.Type type,
+            String title,
+            String description,
+            UUID parentId,
+            UUID requirementId,
+            UUID sprintId,
+            UUID milestoneId,
+            WorkItem.Priority priority,
+            BigDecimal storyPoints,
+            Integer estimateMinutes,
+            String[] labels,
+            UUID assigneeId,
+            Instant dueAt
+    ) {
+        this(type, title, description, WorkItem.WorkKind.NON_CODE, parentId, requirementId, sprintId, milestoneId, priority, storyPoints, estimateMinutes, labels, assigneeId, dueAt);
     }
 }

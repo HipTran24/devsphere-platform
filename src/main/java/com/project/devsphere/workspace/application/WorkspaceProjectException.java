@@ -132,4 +132,8 @@ public class WorkspaceProjectException extends RuntimeException {
     public static WorkspaceProjectException cannotModifyDoneItemSprint(String message) {
         return new WorkspaceProjectException(HttpStatus.CONFLICT, "CANNOT_MODIFY_DONE_ITEM_SPRINT", message);
     }
+
+    public static WorkspaceProjectException qualityGateEvidenceMissing(String message) {
+        return new WorkspaceProjectException(HttpStatus.UNPROCESSABLE_ENTITY, "QUALITY_GATE_EVIDENCE_MISSING", message);
+    }
 }

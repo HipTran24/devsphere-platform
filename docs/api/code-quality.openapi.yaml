@@ -1,0 +1,636 @@
+openapi: 3.1.0
+info:
+  title: DevSphere Code Quality & Quality Gate API
+  version: 1.0.0
+  description: >
+    RESTful API endpoints for CI workflow run tracking, independent human code reviews,
+    quality gate evaluation, and evidence-gated work item acceptance.
+servers:
+  - url: /api/v1
+paths:
+  /workspaces/{workspaceId}/projects/{projectId}/ci-runs:
+    parameters:
+      - name: workspaceId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: projectId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      summary: Record or update automated CI run
+      description: >
+        Records or updates an automated CI run. Idempotent on (repositoryId, githubRunId, runAttempt).
+        Enforces database check constraint: status = 'COMPLETED' requires non-null conclusion and completedAt.
+      operationId: recordCiRun
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RecordCiRunRequest'
+      responses:
+        '201':
+          description: CI run created or updated successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CiRunResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+    get:
+      summary: List CI runs
+      description: Lists recorded CI runs with optional filters. Scoped to project members.
+      operationId: listCiRuns
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: workItemId
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - name: prNumber
+          in: query
+          required: false
+          schema:
+            type: integer
+        - name: headSha
+          in: query
+          required: false
+          schema:
+            type: string
+            pattern: '^[0-9a-fA-F]{40}$'
+      responses:
+        '200':
+          description: List of CI runs.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CiRunResponse'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /workspaces/{workspaceId}/projects/{projectId}/ci-runs/{ciRunId}:
+    parameters:
+      - name: workspaceId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: projectId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: ciRunId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      summary: Get CI run by ID
+      description: Retrieves details of a specific CI run. Scoped to project members.
+      operationId: getCiRun
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: CI run details.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CiRunResponse'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /workspaces/{workspaceId}/projects/{projectId}/code-reviews:
+    parameters:
+      - name: workspaceId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: projectId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      summary: Submit human code review
+      description: >
+        Submits a human code review. Enforces:
+        - Reviewer holds active DEVELOPER or PM role.
+        - Author Independence Invariant: Reviewer cannot be the author of the PR.
+        - Reviewer must have a linked GitHub identity in oauth_accounts.
+        - Head SHA must match current PR HEAD SHA.
+        - Context version stamped from current project version.
+      operationId: submitCodeReview
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubmitReviewRequest'
+      responses:
+        '201':
+          description: Code review submitted successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeReviewResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+    get:
+      summary: List code reviews
+      description: Lists recorded code reviews with optional filters. Scoped to project members.
+      operationId: listCodeReviews
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: workItemId
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - name: prNumber
+          in: query
+          required: false
+          schema:
+            type: integer
+        - name: headSha
+          in: query
+          required: false
+          schema:
+            type: string
+            pattern: '^[0-9a-fA-F]{40}$'
+      responses:
+        '200':
+          description: List of code reviews.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CodeReviewResponse'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /workspaces/{workspaceId}/projects/{projectId}/code-reviews/{reviewId}:
+    parameters:
+      - name: workspaceId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: projectId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: reviewId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      summary: Get code review by ID
+      description: Retrieves details of a specific code review. Scoped to project members.
+      operationId: getCodeReview
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Code review details.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeReviewResponse'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /workspaces/{workspaceId}/projects/{projectId}/work-items/{workItemId}/quality-gate:
+    parameters:
+      - name: workspaceId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: projectId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: workItemId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      summary: Evaluate quality gate for a work item
+      description: >
+        Evaluates current Quality Gate status for a given work item.
+        - For NON_CODE tasks: passes if all acceptance criteria are verified.
+        - For CODE tasks: requires linked PR activity, successful CI run on current HEAD SHA,
+          independent human review with PASS status matching project context version, and verified criteria.
+      operationId: evaluateQualityGate
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Quality gate evaluation result.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QualityGateResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    RecordCiRunRequest:
+      type: object
+      required:
+        - githubRunId
+        - headSha
+      properties:
+        repositoryId:
+          type: string
+          format: uuid
+          nullable: true
+        githubRunId:
+          type: integer
+          format: int64
+          example: 123456
+        runAttempt:
+          type: integer
+          default: 1
+          example: 1
+        headSha:
+          type: string
+          pattern: '^[0-9a-fA-F]{40}$'
+          example: 4a2ef70a16784ca4b2dc838c9475b3725645fb93
+        prNumber:
+          type: integer
+          nullable: true
+          example: 42
+        workItemId:
+          type: string
+          format: uuid
+          nullable: true
+        status:
+          type: string
+          enum: [QUEUED, IN_PROGRESS, COMPLETED]
+          default: QUEUED
+        conclusion:
+          type: string
+          enum: [SUCCESS, FAILURE, CANCELLED, SKIPPED, TIMED_OUT, NEUTRAL, ACTION_REQUIRED, STALE, STARTUP_FAILURE]
+          nullable: true
+        checks:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        metrics:
+          type: object
+          additionalProperties: true
+        startedAt:
+          type: string
+          format: date-time
+          nullable: true
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    CiRunResponse:
+      type: object
+      required:
+        - id
+        - projectId
+        - repositoryId
+        - githubRunId
+        - runAttempt
+        - headSha
+        - status
+        - createdAt
+        - updatedAt
+        - version
+      properties:
+        id:
+          type: string
+          format: uuid
+        projectId:
+          type: string
+          format: uuid
+        repositoryId:
+          type: string
+          format: uuid
+        workItemId:
+          type: string
+          format: uuid
+          nullable: true
+        githubRunId:
+          type: integer
+          format: int64
+        runAttempt:
+          type: integer
+        headSha:
+          type: string
+        prNumber:
+          type: integer
+          nullable: true
+        status:
+          type: string
+          enum: [QUEUED, IN_PROGRESS, COMPLETED]
+        conclusion:
+          type: string
+          enum: [SUCCESS, FAILURE, CANCELLED, SKIPPED, TIMED_OUT, NEUTRAL, ACTION_REQUIRED, STALE, STARTUP_FAILURE]
+          nullable: true
+        checks:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        metrics:
+          type: object
+          additionalProperties: true
+        startedAt:
+          type: string
+          format: date-time
+          nullable: true
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        version:
+          type: integer
+          format: int64
+
+    SubmitReviewRequest:
+      type: object
+      required:
+        - headSha
+      properties:
+        repositoryId:
+          type: string
+          format: uuid
+          nullable: true
+        scope:
+          type: string
+          enum: [PUSH, PR]
+          default: PR
+        prNumber:
+          type: integer
+          nullable: true
+          example: 42
+        headSha:
+          type: string
+          pattern: '^[0-9a-fA-F]{40}$'
+          example: 4a2ef70a16784ca4b2dc838c9475b3725645fb93
+        status:
+          type: string
+          enum: [PENDING, RUNNING, PASS, FAIL, REQUIRES_CHANGES, UNAVAILABLE, STALE]
+          default: PASS
+        summary:
+          type: string
+          nullable: true
+          example: Verified implementation and tests LGTM.
+        findings:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        workItemId:
+          type: string
+          format: uuid
+          nullable: true
+
+    CodeReviewResponse:
+      type: object
+      required:
+        - id
+        - projectId
+        - repositoryId
+        - headSha
+        - contextVersion
+        - scope
+        - reviewerKind
+        - status
+        - createdAt
+        - updatedAt
+        - version
+      properties:
+        id:
+          type: string
+          format: uuid
+        projectId:
+          type: string
+          format: uuid
+        repositoryId:
+          type: string
+          format: uuid
+        workItemId:
+          type: string
+          format: uuid
+          nullable: true
+        aiJobId:
+          type: string
+          format: uuid
+          nullable: true
+        prNumber:
+          type: integer
+          nullable: true
+        headSha:
+          type: string
+        contextVersion:
+          type: integer
+          format: int64
+        scope:
+          type: string
+          enum: [PUSH, PR]
+        reviewerKind:
+          type: string
+          enum: [AI, HUMAN]
+        findings:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        summary:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [PENDING, RUNNING, PASS, FAIL, REQUIRES_CHANGES, UNAVAILABLE, STALE]
+        gateSnapshot:
+          type: object
+          additionalProperties: true
+        reviewerId:
+          type: string
+          format: uuid
+          nullable: true
+        modelName:
+          type: string
+          nullable: true
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        version:
+          type: integer
+          format: int64
+
+    QualityGateResponse:
+      type: object
+      required:
+        - status
+        - passed
+        - workItemId
+        - ciPassed
+        - reviewPassed
+        - criteriaPassed
+        - details
+        - blockers
+      properties:
+        status:
+          type: string
+          enum: [PASSED, FAILED, PENDING_EVIDENCE, STALE_EVIDENCE]
+        passed:
+          type: boolean
+        workItemId:
+          type: string
+          format: uuid
+        prNumber:
+          type: integer
+          nullable: true
+        headSha:
+          type: string
+          nullable: true
+        ciPassed:
+          type: boolean
+        reviewPassed:
+          type: boolean
+        criteriaPassed:
+          type: boolean
+        details:
+          type: string
+        blockers:
+          type: array
+          items:
+            type: string
+
+    ProblemDetail:
+      type: object
+      required:
+        - status
+        - title
+        - code
+      properties:
+        status:
+          type: integer
+          example: 422
+        title:
+          type: string
+          example: REVIEW_AUTHOR_INDEPENDENCE_VIOLATION
+        code:
+          type: string
+          example: REVIEW_AUTHOR_INDEPENDENCE_VIOLATION
+        detail:
+          type: string
+          example: Human PR approval requires an independent GitHub identity
+        instance:
+          type: string
+          example: /api/v1/workspaces/.../code-reviews
+
+  responses:
+    BadRequest:
+      description: Bad Request / Validation Failed
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+    Forbidden:
+      description: Forbidden / Access Denied
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+    NotFound:
+      description: Resource Not Found
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+    Conflict:
+      description: Conflict / Head SHA Mismatch / Duplicate Resource
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+    UnprocessableEntity:
+      description: Unprocessable Entity / Author Independence Violation / Quality Gate Evidence Missing
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
