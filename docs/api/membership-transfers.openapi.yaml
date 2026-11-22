@@ -1,0 +1,1012 @@
+openapi: 3.1.0
+info:
+  title: DevSphere Workspace Membership & Project Role Transfers API
+  version: 1.0.0
+  description: >
+    RESTful API endpoints for single-use workspace invitations, membership lifecycle cascades,
+    multi-role project assignments, workspace owner handoffs, and continuous-coverage PM transfers.
+servers:
+  - url: /api/v1
+paths:
+  /workspaces/{workspaceId}/invitations:
+    parameters:
+      - name: workspaceId
+        in: path
+        required: true
+        description: Unique workspace identifier (UUID)
+        schema:
+          type: string
+          format: uuid
+
+    post:
+      summary: Issue single-use workspace invitation
+      description: >
+        Creates a single-use cryptographically secure invitation token. Only the SHA-256 hash
+        is stored in the database. Returns raw token for delivery to invitee. Requires workspace OWNER.
+      operationId: createInvitation
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InviteMemberRequest'
+      responses:
+        '201':
+          description: Invitation created and raw token issued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkspaceInvitationResponse'
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: Duplicate pending invitation or user already active member
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+
+    get:
+      summary: List sanitized workspace invitations
+      description: >
+        Returns all invitations for the workspace with token and token_hash redacted. Requires workspace OWNER.
+      operationId: listInvitations
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: List of sanitized invitations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/WorkspaceInvitationResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /workspaces/{workspaceId}/invitations/{invitationId}:
+    parameters:
+      - name: workspaceId
+        in: path
+        required: true
+        description: Workspace UUID
+        schema:
+          type: string
+          format: uuid
+      - name: invitationId
+        in: path
+        required: true
+        description: Invitation UUID
+        schema:
+          type: string
+          format: uuid
+
+    delete:
+      summary: Revoke workspace invitation
+      description: >
+        Marks pending invitation as REVOKED so it can no longer be accepted. Requires workspace OWNER.
+      operationId: revokeInvitation
+      security:
+        - BearerAuth: []
+      responses:
+        '204':
+          description: Invitation revoked
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/ResourceNotFound'
+
+  /workspaces/invitations/accept:
+    post:
+      summary: Accept workspace invitation
+      description: >
+        Consumes raw invitation token and establishes active workspace membership with MEMBER role.
+        Enforces caller email match with invitation email, validates token hash, and checks expiry.
+      operationId: acceptInvitation
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AcceptInvitationRequest'
+      responses:
+        '200':
+          description: Invitation accepted and workspace membership granted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ACCEPTED
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Caller email does not match invitation email
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+        '404':
+          $ref: '#/components/responses/ResourceNotFound'
+        '410':
+          description: Invitation has expired
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+
+  /workspaces/invitations/decline:
+    post:
+      summary: Decline workspace invitation
+      description: >
+        Declines a pending invitation using raw token. Requires authenticated caller matching invitation email.
+      operationId: declineInvitation
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeclineInvitationRequest'
+      responses:
+        '200':
+          description: Invitation declined
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: DECLINED
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/ResourceNotFound'
+        '410':
+          description: Invitation has expired
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+
+  /workspaces/{workspaceId}/members:
+    parameters:
+      - name: workspaceId
+        in: path
+        required: true
+        description: Workspace UUID
+        schema:
+          type: string
+          format: uuid
+
+    get:
+      summary: List workspace members
+      description: >
+        Returns list of workspace members with user details, role, and membership status. Requires workspace membership.
+      operationId: listWorkspaceMembers
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Workspace members list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/WorkspaceMemberDetailsResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /workspaces/{workspaceId}/members/{userId}:
+    parameters:
+      - name: workspaceId
+        in: path
+        required: true
+        description: Workspace UUID
+        schema:
+          type: string
+          format: uuid
+      - name: userId
+        in: path
+        required: true
+        description: Target user UUID
+        schema:
+          type: string
+          format: uuid
+
+    delete:
+      summary: Remove workspace member
+      description: >
+        Removes a member from workspace (setting status to REMOVED). Enforces LAST_OWNER invariant
+        and ACTIVE_PROJECT_REQUIRES_PM trigger guard. Cascades removal to project_members, revokes active
+        project roles, and clears deadline approver.
+      operationId: removeWorkspaceMember
+      security:
+        - BearerAuth: []
+      responses:
+        '204':
+          description: Workspace member removed and cascades applied
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/ResourceNotFound'
+        '409':
+          description: Member is last owner (LAST_OWNER) or active PM on active project (ACTIVE_PROJECT_REQUIRES_PM)
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+
+  /workspaces/{workspaceId}/transfer-ownership:
+    parameters:
+      - name: workspaceId
+        in: path
+        required: true
+        description: Workspace UUID
+        schema:
+          type: string
+          format: uuid
+
+    post:
+      summary: Transfer workspace ownership
+      description: >
+        Transfers workspace OWNER role to an active MEMBER. Preserves project PM roles (TC-30).
+        Enforces ds_check_workspace_owner deferred constraint and optimistic versioning.
+      operationId: transferWorkspaceOwnership
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TransferOwnershipRequest'
+      responses:
+        '200':
+          description: Ownership successfully transferred
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: TRANSFERRED
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: Version conflict (PLAN_STALE)
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+
+  /workspaces/{workspaceId}/projects/{projectId}/members:
+    parameters:
+      - name: workspaceId
+        in: path
+        required: true
+        description: Workspace UUID
+        schema:
+          type: string
+          format: uuid
+      - name: projectId
+        in: path
+        required: true
+        description: Project UUID
+        schema:
+          type: string
+          format: uuid
+
+    get:
+      summary: List project members and active roles
+      description: >
+        Returns list of project members and their accumulated active roles. Requires workspace membership.
+      operationId: listProjectMembers
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Project members list with active roles
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ProjectMemberDetailsResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+    post:
+      summary: Grant project role
+      description: >
+        Grants DEVELOPER, CLIENT, or VIEWER role to an active workspace member. Roles accumulate.
+        Direct grant of PM role is blocked (PM_ROLE_RESTRICTED). Requires active project PM.
+      operationId: grantProjectRole
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GrantRoleRequest'
+      responses:
+        '201':
+          description: Role granted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: GRANTED
+                  userId:
+                    type: string
+                    format: uuid
+                  role:
+                    type: string
+                    example: DEVELOPER
+        '400':
+          description: Validation error or attempted direct PM grant (PM_ROLE_RESTRICTED)
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /workspaces/{workspaceId}/projects/{projectId}/members/{userId}/roles/{role}:
+    parameters:
+      - name: workspaceId
+        in: path
+        required: true
+        description: Workspace UUID
+        schema:
+          type: string
+          format: uuid
+      - name: projectId
+        in: path
+        required: true
+        description: Project UUID
+        schema:
+          type: string
+          format: uuid
+      - name: userId
+        in: path
+        required: true
+        description: Target user UUID
+        schema:
+          type: string
+          format: uuid
+      - name: role
+        in: path
+        required: true
+        description: Role to revoke (DEVELOPER, CLIENT, VIEWER)
+        schema:
+          type: string
+          enum: [DEVELOPER, CLIENT, VIEWER]
+
+    delete:
+      summary: Revoke project role
+      description: >
+        Revokes a specific active role. Other roles remain active. If revoking CLIENT role leaves
+        the user with no remaining CLIENT roles, deadline_approver_id is cleared. Cannot revoke PM role.
+        Requires active project PM.
+      operationId: revokeProjectRole
+      security:
+        - BearerAuth: []
+      responses:
+        '204':
+          description: Role revoked
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/ResourceNotFound'
+
+  /workspaces/{workspaceId}/projects/{projectId}/members/{userId}:
+    parameters:
+      - name: workspaceId
+        in: path
+        required: true
+        description: Workspace UUID
+        schema:
+          type: string
+          format: uuid
+      - name: projectId
+        in: path
+        required: true
+        description: Project UUID
+        schema:
+          type: string
+          format: uuid
+      - name: userId
+        in: path
+        required: true
+        description: Target user UUID
+        schema:
+          type: string
+          format: uuid
+
+    delete:
+      summary: Remove member from project
+      description: >
+        Revokes all active roles and sets project_members status to REMOVED. Cannot remove active PM.
+        Requires active project PM.
+      operationId: removeProjectMember
+      security:
+        - BearerAuth: []
+      responses:
+        '204':
+          description: Project member removed
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/ResourceNotFound'
+
+  /workspaces/{workspaceId}/projects/{projectId}/pm-assignments:
+    parameters:
+      - name: workspaceId
+        in: path
+        required: true
+        description: Workspace UUID
+        schema:
+          type: string
+          format: uuid
+      - name: projectId
+        in: path
+        required: true
+        description: Project UUID
+        schema:
+          type: string
+          format: uuid
+
+    post:
+      summary: Propose PM assignment nomination
+      description: >
+        Nominates an active workspace member as project PM candidate via ds_propose_pm_assignment.
+        Continuous coverage: Outgoing PM retains full operational PM permissions while nomination is PENDING.
+        Requires workspace OWNER.
+      operationId: proposePmAssignment
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProposePmRequest'
+      responses:
+        '201':
+          description: PM nomination recorded in project settings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PmAssignmentResponse'
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: Version conflict (PLAN_STALE) or duplicate pending assignment (DUPLICATE_RESOURCE)
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+
+  /workspaces/{workspaceId}/projects/{projectId}/pm-assignments/current:
+    parameters:
+      - name: workspaceId
+        in: path
+        required: true
+        description: Workspace UUID
+        schema:
+          type: string
+          format: uuid
+      - name: projectId
+        in: path
+        required: true
+        description: Project UUID
+        schema:
+          type: string
+          format: uuid
+
+    get:
+      summary: Get current pending PM assignment
+      description: >
+        Retrieves active PM assignment proposal facts. Returns 204 if none pending. Requires workspace membership.
+      operationId: getCurrentPmAssignment
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Pending PM assignment details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PmAssignmentResponse'
+        '204':
+          description: No PM assignment proposal pending
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /workspaces/{workspaceId}/projects/{projectId}/pm-assignments/{assignmentId}/accept:
+    parameters:
+      - name: workspaceId
+        in: path
+        required: true
+        description: Workspace UUID
+        schema:
+          type: string
+          format: uuid
+      - name: projectId
+        in: path
+        required: true
+        description: Project UUID
+        schema:
+          type: string
+          format: uuid
+      - name: assignmentId
+        in: path
+        required: true
+        description: PM assignment UUID
+        schema:
+          type: string
+          format: uuid
+
+    post:
+      summary: Accept PM assignment nomination
+      description: >
+        Candidate accepts PM nomination via ds_accept_pm_assignment. Atomically revokes outgoing PM's PM role,
+        grants new PM active PM role, preserves outgoing PM non-PM roles, and activates workspace if SETUP_INCOMPLETE.
+        Requires designated candidate.
+      operationId: acceptPmAssignment
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AcceptPmRequest'
+      responses:
+        '200':
+          description: PM assignment accepted and role transferred
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ACCEPTED
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: Version conflict (PLAN_STALE) or invalid proposal (PM_TRANSFER_NOT_ACCEPTED)
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+
+  /workspaces/{workspaceId}/projects/{projectId}/pm-assignments/{assignmentId}/decline:
+    parameters:
+      - name: workspaceId
+        in: path
+        required: true
+        description: Workspace UUID
+        schema:
+          type: string
+          format: uuid
+      - name: projectId
+        in: path
+        required: true
+        description: Project UUID
+        schema:
+          type: string
+          format: uuid
+      - name: assignmentId
+        in: path
+        required: true
+        description: PM assignment UUID
+        schema:
+          type: string
+          format: uuid
+
+    post:
+      summary: Decline or cancel PM assignment nomination
+      description: >
+        Declines candidate nomination or cancels proposal. Allowed by designated candidate or workspace OWNER.
+      operationId: declinePmAssignment
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: PM assignment nomination declined
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: DECLINED
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/ResourceNotFound'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    InviteMemberRequest:
+      type: object
+      required:
+        - email
+      properties:
+        email:
+          type: string
+          format: email
+          example: colleague@example.com
+        role:
+          type: string
+          enum: [MEMBER]
+          default: MEMBER
+          example: MEMBER
+
+    WorkspaceInvitationResponse:
+      type: object
+      required:
+        - id
+        - workspaceId
+        - email
+        - status
+      properties:
+        id:
+          type: string
+          format: uuid
+        workspaceId:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        invitedBy:
+          type: string
+          format: uuid
+        role:
+          type: string
+          example: MEMBER
+        status:
+          type: string
+          enum: [PENDING, ACCEPTED, DECLINED, EXPIRED, REVOKED]
+          example: PENDING
+        expiresAt:
+          type: string
+          format: date-time
+        acceptedAt:
+          type: string
+          format: date-time
+        token:
+          type: string
+          description: Cryptographic raw token; only returned on invitation issuance
+
+    AcceptInvitationRequest:
+      type: object
+      required:
+        - token
+      properties:
+        token:
+          type: string
+          example: 8f4a13b6c2d8479e0a29f8c14e56d782
+
+    DeclineInvitationRequest:
+      type: object
+      required:
+        - token
+      properties:
+        token:
+          type: string
+          example: 8f4a13b6c2d8479e0a29f8c14e56d782
+
+    TransferOwnershipRequest:
+      type: object
+      required:
+        - targetUserId
+        - expectedVersion
+      properties:
+        targetUserId:
+          type: string
+          format: uuid
+        expectedVersion:
+          type: integer
+          format: int64
+          minimum: 0
+          example: 0
+        reason:
+          type: string
+          example: Stepping down as workspace owner
+
+    WorkspaceMemberDetailsResponse:
+      type: object
+      required:
+        - id
+        - workspaceId
+        - userId
+        - email
+        - role
+        - status
+      properties:
+        id:
+          type: string
+          format: uuid
+        workspaceId:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        displayName:
+          type: string
+        role:
+          type: string
+          enum: [OWNER, MEMBER]
+        status:
+          type: string
+          enum: [ACTIVE, REMOVED]
+        joinedAt:
+          type: string
+          format: date-time
+
+    GrantRoleRequest:
+      type: object
+      required:
+        - userId
+        - role
+      properties:
+        userId:
+          type: string
+          format: uuid
+        role:
+          type: string
+          enum: [DEVELOPER, CLIENT, VIEWER]
+          example: DEVELOPER
+
+    ProjectMemberRoleResponse:
+      type: object
+      required:
+        - id
+        - projectId
+        - projectMemberId
+        - userId
+        - role
+      properties:
+        id:
+          type: string
+          format: uuid
+        projectId:
+          type: string
+          format: uuid
+        projectMemberId:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        role:
+          type: string
+          enum: [PM, DEVELOPER, CLIENT, VIEWER]
+        grantedBy:
+          type: string
+          format: uuid
+        grantedAt:
+          type: string
+          format: date-time
+        acceptedAt:
+          type: string
+          format: date-time
+        revokedAt:
+          type: string
+          format: date-time
+
+    ProjectMemberDetailsResponse:
+      type: object
+      required:
+        - id
+        - projectId
+        - workspaceId
+        - userId
+        - status
+        - roles
+      properties:
+        id:
+          type: string
+          format: uuid
+        projectId:
+          type: string
+          format: uuid
+        workspaceId:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [ACTIVE, REMOVED]
+        joinedAt:
+          type: string
+          format: date-time
+        roles:
+          type: array
+          items:
+            type: string
+            enum: [PM, DEVELOPER, CLIENT, VIEWER]
+
+    ProposePmRequest:
+      type: object
+      required:
+        - candidateUserId
+        - expectedVersion
+      properties:
+        candidateUserId:
+          type: string
+          format: uuid
+        expectedVersion:
+          type: integer
+          format: int64
+          minimum: 0
+          example: 0
+
+    AcceptPmRequest:
+      type: object
+      required:
+        - expectedVersion
+      properties:
+        expectedVersion:
+          type: integer
+          format: int64
+          minimum: 0
+          example: 0
+
+    PmAssignmentResponse:
+      type: object
+      required:
+        - id
+        - projectId
+        - candidateUserId
+        - proposedBy
+        - proposedAt
+        - status
+      properties:
+        id:
+          type: string
+          format: uuid
+        projectId:
+          type: string
+          format: uuid
+        candidateUserId:
+          type: string
+          format: uuid
+        proposedBy:
+          type: string
+          format: uuid
+        proposedAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [PENDING, ACCEPTED, DECLINED]
+          example: PENDING
+
+    ProblemDetail:
+      type: object
+      required:
+        - status
+        - title
+      properties:
+        status:
+          type: integer
+          example: 400
+        title:
+          type: string
+          example: VALIDATION_FAILED
+        detail:
+          type: string
+          example: Validation failed
+        code:
+          type: string
+          example: VALIDATION_FAILED
+
+  responses:
+    ValidationFailed:
+      description: Input validation failed or malformed request payload
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+
+    Unauthorized:
+      description: Authentication missing, invalid, or expired
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+
+    Forbidden:
+      description: Access denied or insufficient permissions
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+
+    ResourceNotFound:
+      description: Target entity was not found
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'

@@ -41,6 +41,14 @@ public class AccessPolicy {
     }
 
     /**
+     * Enforces that the caller is an authenticated user with an active account,
+     * verified email, and an active, unrevoked session.
+     */
+    public void requireAuthenticatedUser(SessionService.Principal principal) {
+        validateCaller(principal);
+    }
+
+    /**
      * Enforces that the caller is an active member of the designated workspace.
      */
     public WorkspaceScope requireWorkspaceMember(SessionService.Principal principal, UUID workspaceId) {
