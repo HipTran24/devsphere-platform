@@ -1,0 +1,440 @@
+openapi: 3.1.0
+info:
+  title: DevSphere Account Administration and Audit API
+  version: 1.0.0
+  description: Administrative endpoints for user lifecycle management, status state-machine transitions, and security audit log inspection.
+servers:
+  - url: /api/v1
+paths:
+  /admin/users:
+    get:
+      summary: Query users with pagination, filtering, and sorting
+      description: Returns a paginated list of users. Whitelisted sorting fields are createdAt, email, displayName, and status. Password hashes, tokens, and internal JPA references are never exposed.
+      operationId: getAdminUsers
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          description: Zero-based page index (0..10000)
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 10000
+            default: 0
+        - name: size
+          in: query
+          description: Page size (1..100)
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: q
+          in: query
+          description: Escaped wildcard LIKE search query on email and displayName (max 200 code points)
+          required: false
+          schema:
+            type: string
+            maxLength: 200
+        - name: keyword
+          in: query
+          description: Alias for q
+          required: false
+          schema:
+            type: string
+            maxLength: 200
+        - name: status
+          in: query
+          description: Filter users by account status
+          required: false
+          schema:
+            $ref: '#/components/schemas/UserStatus'
+        - name: role
+          in: query
+          description: Filter users by system role
+          required: false
+          schema:
+            $ref: '#/components/schemas/SystemRole'
+        - name: systemRole
+          in: query
+          description: Alias for role
+          required: false
+          schema:
+            $ref: '#/components/schemas/SystemRole'
+        - name: sort
+          in: query
+          description: Sort specification formatted as field,direction (e.g. createdAt,desc; email,asc)
+          required: false
+          schema:
+            type: string
+            default: createdAt,desc
+      responses:
+        '200':
+          description: Paginated user list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminUserPageResponse'
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /admin/users/{userId}/status:
+    patch:
+      summary: Update user status
+      description: Atomically updates user status using advisory and row-level locks, verifying allowed state transitions and protecting against locking the last active administrator.
+      operationId: updateUserStatus
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          description: Unique identifier of the target user
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserStatusUpdateRequest'
+      responses:
+        '200':
+          description: User status successfully updated or unchanged (idempotent no-op)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminUserResponse'
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/ResourceNotFound'
+        '409':
+          description: Conflict (concurrent version change, invalid state transition, or last active admin)
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+
+  /admin/audit-logs:
+    get:
+      summary: Query system audit logs
+      description: Returns paginated audit trail events with safe details (whitelisted fields only; before/after json fully stripped of secrets).
+      operationId: getAdminAuditLogs
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          description: Zero-based page index (0..10000)
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 10000
+            default: 0
+        - name: size
+          in: query
+          description: Page size (1..100)
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: actorId
+          in: query
+          description: Filter by actor UUID
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - name: action
+          in: query
+          description: Filter by action name (e.g. USER_STATUS_CHANGE, UPDATE)
+          required: false
+          schema:
+            type: string
+        - name: entityType
+          in: query
+          description: Filter by entity type (e.g. users, workspaces)
+          required: false
+          schema:
+            type: string
+        - name: from
+          in: query
+          description: Start of audit window in ISO-8601 format (max 31 days span with to; defaults to 30 days ago)
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          description: End of audit window in ISO-8601 format (defaults to current DB time)
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: sort
+          in: query
+          description: Sort field and direction (occurredAt, createdAt; default occurredAt,desc)
+          required: false
+          schema:
+            type: string
+            default: occurredAt,desc
+      responses:
+        '200':
+          description: Paginated audit log records
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminAuditLogPageResponse'
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    UserStatus:
+      type: string
+      enum:
+        - ACTIVE
+        - PENDING
+        - LOCKED
+
+    SystemRole:
+      type: string
+      enum:
+        - ADMIN
+        - USER
+
+    UserStatusUpdateRequest:
+      type: object
+      required:
+        - status
+        - expectedVersion
+      properties:
+        status:
+          $ref: '#/components/schemas/UserStatus'
+        expectedVersion:
+          type: integer
+          format: int64
+          minimum: 0
+
+    AdminUserResponse:
+      type: object
+      required:
+        - id
+        - email
+        - displayName
+        - status
+        - systemRole
+        - createdAt
+        - updatedAt
+        - version
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        displayName:
+          type: string
+        status:
+          $ref: '#/components/schemas/UserStatus'
+        systemRole:
+          $ref: '#/components/schemas/SystemRole'
+        emailVerifiedAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        version:
+          type: integer
+          format: int64
+
+    AdminUserPageResponse:
+      type: object
+      required:
+        - items
+        - content
+        - page
+        - size
+        - totalElements
+        - totalPages
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminUserResponse'
+        content:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminUserResponse'
+        page:
+          type: integer
+        size:
+          type: integer
+        totalElements:
+          type: integer
+          format: int64
+        totalPages:
+          type: integer
+        effectiveFrom:
+          type: string
+          format: date-time
+          nullable: true
+        effectiveTo:
+          type: string
+          format: date-time
+          nullable: true
+
+    AdminAuditLogResponse:
+      type: object
+      required:
+        - id
+        - action
+        - entityType
+        - safeDetails
+        - occurredAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        workspaceId:
+          type: string
+          format: uuid
+          nullable: true
+        projectId:
+          type: string
+          format: uuid
+          nullable: true
+        actorId:
+          type: string
+          format: uuid
+          nullable: true
+        action:
+          type: string
+        entityType:
+          type: string
+        entityId:
+          type: string
+          format: uuid
+          nullable: true
+        safeDetails:
+          type: object
+          description: Whitelisted field changes (status, role, version only)
+          additionalProperties: true
+        occurredAt:
+          type: string
+          format: date-time
+        traceId:
+          type: string
+          nullable: true
+
+    AdminAuditLogPageResponse:
+      type: object
+      required:
+        - items
+        - content
+        - page
+        - size
+        - totalElements
+        - totalPages
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminAuditLogResponse'
+        content:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminAuditLogResponse'
+        page:
+          type: integer
+        size:
+          type: integer
+        totalElements:
+          type: integer
+          format: int64
+        totalPages:
+          type: integer
+        effectiveFrom:
+          type: string
+          format: date-time
+          nullable: true
+        effectiveTo:
+          type: string
+          format: date-time
+          nullable: true
+
+    ProblemDetail:
+      type: object
+      required:
+        - status
+        - title
+      properties:
+        status:
+          type: integer
+        title:
+          type: string
+        detail:
+          type: string
+        code:
+          type: string
+
+  responses:
+    ValidationFailed:
+      description: Input validation failed or out-of-bounds parameter
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+
+    Unauthorized:
+      description: Authentication missing, invalid, or expired
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+
+    Forbidden:
+      description: Insufficient administrative privileges
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+
+    ResourceNotFound:
+      description: Target entity was not found
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'

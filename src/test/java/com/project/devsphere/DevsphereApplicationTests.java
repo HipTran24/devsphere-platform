@@ -52,6 +52,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class DevsphereApplicationTests {
     static final String RUNTIME_PASSWORD = "temporary-test-'role-$password";
     static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:18.7")
+            .withCommand("postgres", "-c", "max_connections=300")
             .withEnv("DATABASE_USER", "devsphere_app")
             .withEnv("DATABASE_PASSWORD", RUNTIME_PASSWORD)
             .withCopyFileToContainer(MountableFile.forHostPath(java.nio.file.Path.of("infra/postgres/runtime-role.sql").toAbsolutePath()),
@@ -62,6 +63,10 @@ class DevsphereApplicationTests {
         r.add("spring.datasource.url",POSTGRES::getJdbcUrl);
         r.add("spring.datasource.username",POSTGRES::getUsername);
         r.add("spring.datasource.password",POSTGRES::getPassword);
+        r.add("spring.datasource.hikari.maximum-pool-size", () -> 5);
+        r.add("spring.datasource.hikari.minimum-idle", () -> 1);
+        r.add("spring.datasource.hikari.idle-timeout", () -> 10000);
+        r.add("spring.datasource.hikari.max-lifetime", () -> 30000);
         r.add("spring.flyway.user",POSTGRES::getUsername);
         r.add("spring.flyway.password",POSTGRES::getPassword);
         byte[] key = new byte[32];

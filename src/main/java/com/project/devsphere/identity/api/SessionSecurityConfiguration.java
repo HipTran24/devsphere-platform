@@ -8,6 +8,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.context.annotation.Bean;
@@ -20,6 +21,8 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.SecurityFilterChain;
@@ -40,8 +43,10 @@ public class SessionSecurityConfiguration {
     private static final RequestMatcher LIST_SESSIONS = ROUTES.matcher(HttpMethod.GET, "/api/v1/auth/sessions");
     private static final RequestMatcher REVOKE_SESSION = ROUTES.matcher(HttpMethod.DELETE, "/api/v1/auth/sessions/{familyId}");
     private static final RequestMatcher CURRENT_USER = ROUTES.matcher(HttpMethod.GET, "/api/v1/auth/me");
+    private static final RequestMatcher ADMIN_ENDPOINTS = ROUTES.matcher("/api/v1/admin/**");
+    private static final RequestMatcher ADMIN_PATCH_ENDPOINTS = ROUTES.matcher(HttpMethod.PATCH, "/api/v1/admin/**");
     private static final RequestMatcher BEARER_ENDPOINTS =
-            new OrRequestMatcher(CURRENT_USER, LIST_SESSIONS, REVOKE_SESSION);
+            new OrRequestMatcher(CURRENT_USER, LIST_SESSIONS, REVOKE_SESSION, ADMIN_ENDPOINTS);
 
     @Bean
     public SecurityFilterChain securityFilterChain(
@@ -64,6 +69,7 @@ public class SessionSecurityConfiguration {
                 .csrfTokenRequestHandler(csrfTokenRequestHandler)
                 .ignoringRequestMatchers(
                     REVOKE_SESSION,
+                    ADMIN_PATCH_ENDPOINTS,
                     ROUTES.matcher(HttpMethod.POST, "/api/v1/auth/register"),
                     ROUTES.matcher(HttpMethod.POST, "/api/v1/auth/verify-email"),
                     ROUTES.matcher(HttpMethod.POST, "/api/v1/auth/verification/resend"),
@@ -81,9 +87,9 @@ public class SessionSecurityConfiguration {
             .requestCache(AbstractHttpConfigurer::disable)
             .exceptionHandling(exceptions -> exceptions
                 .authenticationEntryPoint((request, response, failure) ->
-                        writeProblem(response, HttpServletResponse.SC_UNAUTHORIZED, "Unauthorized"))
+                        writeProblem(response, HttpServletResponse.SC_UNAUTHORIZED, "Unauthorized", "AUTH_INVALID"))
                 .accessDeniedHandler((request, response, failure) ->
-                        writeProblem(response, HttpServletResponse.SC_FORBIDDEN, "Forbidden"))
+                        writeProblem(response, HttpServletResponse.SC_FORBIDDEN, "Forbidden", "ACCESS_DENIED"))
             )
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers(HttpMethod.POST, "/api/v1/auth/register").permitAll()
@@ -96,6 +102,7 @@ public class SessionSecurityConfiguration {
                 .requestMatchers(HttpMethod.POST, "/api/v1/auth/refresh").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/v1/auth/logout").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/v1/auth/csrf").permitAll()
+                .requestMatchers(ADMIN_ENDPOINTS).hasRole("ADMIN")
                 .requestMatchers(BEARER_ENDPOINTS).authenticated()
                 .requestMatchers("/api/**").denyAll()
                 .anyRequest().permitAll()
@@ -108,14 +115,14 @@ public class SessionSecurityConfiguration {
         return http.build();
     }
 
-    private static void writeProblem(HttpServletResponse response, int status, String title) throws IOException {
+    private static void writeProblem(HttpServletResponse response, int status, String title, String code) throws IOException {
         response.setStatus(status);
         if (status == HttpServletResponse.SC_UNAUTHORIZED) {
             response.setHeader(HttpHeaders.WWW_AUTHENTICATE, "Bearer");
         }
         response.setContentType(MediaType.APPLICATION_PROBLEM_JSON_VALUE);
         response.setHeader(HttpHeaders.CACHE_CONTROL, "no-store");
-        response.getWriter().write("{\"title\":\"" + title + "\",\"status\":" + status + "}");
+        response.getWriter().write("{\"code\":\"" + code + "\",\"status\":" + status + ",\"title\":\"" + title + "\"}");
     }
 
     private static final class SessionBearerAuthenticationFilter extends OncePerRequestFilter {
@@ -149,8 +156,13 @@ public class SessionSecurityConfiguration {
                         if (principalOptional.isPresent()) {
                             SessionService.Principal principal = principalOptional.get();
                             SecurityContext context = SecurityContextHolder.createEmptyContext();
+                            String role = principal.systemRole() == null ? "USER" : principal.systemRole().trim().toUpperCase(Locale.ROOT);
+                            List<GrantedAuthority> authorities = List.of(
+                                    new SimpleGrantedAuthority("ROLE_" + role),
+                                    new SimpleGrantedAuthority(role)
+                            );
                             context.setAuthentication(
-                                    UsernamePasswordAuthenticationToken.authenticated(principal, null, List.of())
+                                    UsernamePasswordAuthenticationToken.authenticated(principal, null, authorities)
                             );
                             SecurityContextHolder.setContext(context);
                         }

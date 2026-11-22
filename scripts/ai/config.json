@@ -1,0 +1,13 @@
+{
+  "models": {"implement": "gemini-3.8-flash-high", "qa": "gemini-3.8-flash-high", "review": "gemini-3.8-flash-high"},
+  "worker_transports": {"implement": "antigravity-cli", "qa": "antigravity-cli", "review": "antigravity-cli"},
+  "timeout_seconds": 1800,
+  "checks": [
+    {"name": "workflow-tests", "cwd": ".", "argv": ["python3", "-m", "unittest", "discover", "-s", "tests/ai", "-v"]},
+    {"name": "backend", "cwd": ".", "argv": ["./mvnw", "-B", "-Dmaven.repo.local=.tools/m2/repository", "verify"]},
+    {"name": "frontend-unit", "cwd": "frontend", "argv": ["npm", "test"]},
+    {"name": "frontend-lint", "cwd": "frontend", "argv": ["npm", "run", "lint"]},
+    {"name": "frontend-build", "cwd": "frontend", "argv": ["npm", "run", "build"]},
+    {"name": "frontend-e2e", "cwd": "frontend", "argv": ["npm", "run", "test:e2e", "--", "--forbid-only"]}
+  ]
+}
