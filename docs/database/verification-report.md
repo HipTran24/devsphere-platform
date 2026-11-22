@@ -1,5 +1,15 @@
 # Database verification report
 
+## M1.2 login and sessions
+
+The combined backend verification passed 87 JDK 27 Maven tests with no
+failures, errors or skips. Of these, 62 exercise PostgreSQL 18.7 through
+Testcontainers. Fresh migration, sequential upgrades and idempotent reruns
+cover V001–V008. Combined HTTP/Spring Security/PostgreSQL coverage includes
+registration, OTP, Unicode password login, refresh and logout.
+
+Migration `V008__track_auth_session_rotation.sql` binds the rotation timestamp to revocation and preserves existing sessions. SHA-256 is `82a40a4a3e3d9abcb7586311db5e0137e165610cfdd4c968114ed0ab1a90b8ec`.
+
 ## M1.1 registration and OTP
 
 The current registration migration is `V007__queue_email_verification.sql`. SHA-256 is `b29f2d716efb5f93542675d5d7d558198c3b8fa2c772fbbff6970dd8294cc366`.

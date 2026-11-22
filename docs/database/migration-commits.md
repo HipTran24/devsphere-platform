@@ -11,6 +11,7 @@ Mỗi file SQL migration thuộc một commit riêng, cùng mapping liên quan. 
 | V005 | `feat(db): add collaboration ai and operations persistence` | Monitoring, Communication, Notification, Storage, Reporting, AI, Audit, Operations |
 | V006 | `feat(db): enforce tenant integrity and workflow invariants` | FK/trigger/view, transaction, outbox, kiểm thử và tài liệu ERD |
 | V007 | `feat(auth): register accounts with email verification` | V007 bổ sung AUTH_VERIFY_EMAIL, chỉ mục token xác thực và quy trình kiểm thử worker trên Testcontainers. |
+| V008 | `feat(auth): issue and rotate revocable sessions` | Dấu rotation, bất biến trạng thái phiên và kiểm thử nâng cấp |
 
 Phần dọn công cụ hỗ trợ sử dụng Java/Flyway callback và SQL bootstrap của Docker. Công cụ nhập lịch sử tạm thời đã được gỡ khỏi mã nguồn.
 
