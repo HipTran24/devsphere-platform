@@ -90,3 +90,13 @@ tại. `DELETE /api/v1/auth/sessions/{familyId}` thu hồi một họ phiên.
 
 Xem [hợp đồng API phiên](docs/backend/sessions-openapi.yaml) và
 [nhật ký triển khai](docs/backend/sessions-implementation-log.md).
+
+## Khôi phục mật khẩu backend
+
+Các endpoint khôi phục mật khẩu gồm `POST /api/v1/auth/forgot-password`, `POST /api/v1/auth/forgot-password/verify` và `POST /api/v1/auth/reset-password`, tuân thủ đúng [hợp đồng khôi phục mật khẩu](docs/api/password-recovery.openapi.yaml). Chi tiết kỹ thuật và đo kiểm xem tại [nhật ký triển khai M1.3](docs/backend/password-recovery-implementation-log.md).
+
+- Tiếp nhận yêu cầu: `POST /forgot-password` nhận email, trả về uniform `202 ACCEPTED` cho mọi địa chỉ hợp lệ và không tiết lộ trạng thái tài khoản. Giới hạn tần suất 60 giây và 5 lần/giờ bảo vệ hệ thống.
+- Xác thực mã: `POST /forgot-password/verify` kiểm tra mã 6 số (hết hạn sau 10 phút, vô hiệu hóa sau 5 lần thử sai) và phát hành grant token đơn dụng 43 ký tự Base64URL canonical. Response trả về grant token cùng thời điểm hết hạn `expiresAt` (10 phút).
+- Hoàn tất đổi mật khẩu: `POST /reset-password` nhận grant token và mật khẩu mới (12–128 Unicode code points). Hệ thống tính toán băm Argon2id bên ngoài transaction, sau đó kiểm tra lại điều kiện, ghi `password_hash`, tiêu thụ grant token (ngữ nghĩa đơn dụng), vô hiệu hóa các token recovery cũ và thu hồi toàn bộ phiên đăng nhập hiện hữu của tài khoản trong cùng một transaction, trả về số phiên đã thu hồi `revokedSessions`.
+- Điều kiện hợp lệ và bảo mật: Chỉ tài khoản ở trạng thái `ACTIVE` và đã xác minh email mới đủ điều kiện hoàn tất đổi mật khẩu. Luồng khôi phục không tự động mở khóa, không kích hoạt tài khoản và không tự động đăng nhập (không cấp session token).
+- Cấu hình và giới hạn: Tái sử dụng cấu hình SMTP và hai khóa `AUTH_OTP_HMAC_KEY`, `AUTH_OTP_ENCRYPTION_KEY` như mô tả ở phần đăng ký. Khi thiếu dịch vụ mail hoặc chưa cấu hình đủ khóa OTP, các endpoint trả `503 AUTH_NOT_CONFIGURED`. Bên cạnh giới hạn tần suất trong tiến trình, môi trường chạy sau proxy hoặc nhiều replica cần áp dụng thêm rate limit dùng chung tại gateway.

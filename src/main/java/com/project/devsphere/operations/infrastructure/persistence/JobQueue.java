@@ -22,7 +22,7 @@ public class JobQueue {
         return jdbc.query("""
                 with candidate as (
                   select id from background_jobs
-                  where job_kind not in ('IDEMPOTENCY', 'AUTH_VERIFY_EMAIL') and attempts<5 and scheduled_at<=now()
+                  where job_kind not in ('IDEMPOTENCY', 'AUTH_VERIFY_EMAIL', 'AUTH_RESET_PASSWORD') and attempts<5 and scheduled_at<=now()
                     and (status in ('QUEUED','FAILED') or (status='RUNNING' and locked_until<=now()))
                   order by scheduled_at,id for update skip locked limit 1
                 )

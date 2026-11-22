@@ -18,6 +18,8 @@ class VerificationCodeCryptoTest {
         }
         UUID challenge = UUID.randomUUID();
         assertThat(crypto.decrypt(challenge, crypto.encrypt(challenge, "000012"))).isEqualTo("000012");
+        assertThat(crypto.decrypt(challenge, crypto.encrypt(challenge, "000012", VerificationCodeCrypto.Purpose.RESET_PASSWORD), VerificationCodeCrypto.Purpose.RESET_PASSWORD))
+                .isEqualTo("000012");
     }
 
     @Test
@@ -28,6 +30,11 @@ class VerificationCodeCryptoTest {
         assertThat(crypto.matches(challenge, "004201", hash)).isFalse();
         assertThat(crypto.matches(UUID.randomUUID(), "004200", hash)).isFalse();
         assertThat(crypto.matches(challenge, "004200", "!malformed")).isFalse();
+
+        String recoveryHash = crypto.hash(challenge, "004200", VerificationCodeCrypto.Purpose.RESET_PASSWORD);
+        assertThat(crypto.matches(challenge, "004200", recoveryHash, VerificationCodeCrypto.Purpose.RESET_PASSWORD)).isTrue();
+        assertThat(crypto.matches(challenge, "004200", hash, VerificationCodeCrypto.Purpose.RESET_PASSWORD)).isFalse();
+        assertThat(crypto.matches(challenge, "004200", recoveryHash, VerificationCodeCrypto.Purpose.VERIFY_EMAIL)).isFalse();
     }
 
     @Test
@@ -42,6 +49,33 @@ class VerificationCodeCryptoTest {
         tampered[tampered.length - 1] ^= 1;
         String invalid = Base64.getUrlEncoder().withoutPadding().encodeToString(tampered);
         assertThatIllegalArgumentException().isThrownBy(() -> crypto.decrypt(challenge, invalid));
+    }
+
+    @Test
+    void crossPurposeCiphertextCannotBeDecryptedUnderDifferentPurpose() {
+        UUID challenge = UUID.randomUUID();
+        String encryptedEmail = crypto.encrypt(challenge, "123456", VerificationCodeCrypto.Purpose.VERIFY_EMAIL);
+        String encryptedRecovery = crypto.encrypt(challenge, "123456", VerificationCodeCrypto.Purpose.RESET_PASSWORD);
+
+        assertThat(crypto.decrypt(challenge, encryptedEmail, VerificationCodeCrypto.Purpose.VERIFY_EMAIL)).isEqualTo("123456");
+        assertThat(crypto.decrypt(challenge, encryptedRecovery, VerificationCodeCrypto.Purpose.RESET_PASSWORD)).isEqualTo("123456");
+
+        assertThatIllegalArgumentException().isThrownBy(() ->
+                crypto.decrypt(challenge, encryptedEmail, VerificationCodeCrypto.Purpose.RESET_PASSWORD));
+        assertThatIllegalArgumentException().isThrownBy(() ->
+                crypto.decrypt(challenge, encryptedRecovery, VerificationCodeCrypto.Purpose.VERIFY_EMAIL));
+    }
+
+    @Test
+    void legacyOverloadsPreserveVerifyEmailByteCompatibility() {
+        UUID challenge = UUID.randomUUID();
+        String code = "654321";
+        String legacyHash = crypto.hash(challenge, code);
+        String explicitHash = crypto.hash(challenge, code, VerificationCodeCrypto.Purpose.VERIFY_EMAIL);
+        assertThat(legacyHash).isEqualTo(explicitHash);
+
+        String legacyEncrypted = crypto.encrypt(challenge, code);
+        assertThat(crypto.decrypt(challenge, legacyEncrypted, VerificationCodeCrypto.Purpose.VERIFY_EMAIL)).isEqualTo(code);
     }
 
     @Test

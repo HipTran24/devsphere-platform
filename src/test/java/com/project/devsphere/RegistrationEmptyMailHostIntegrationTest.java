@@ -58,6 +58,9 @@ class RegistrationEmptyMailHostIntegrationTest {
                         .content(json.writeValueAsString(Map.of(
                                 "email", email, "password", "a long test password", "displayName", "New User"))))
                 .andExpect(status().isServiceUnavailable()).andExpect(jsonPath("$.code").value("AUTH_NOT_CONFIGURED"));
+        mvc.perform(post("/api/v1/auth/forgot-password").contentType("application/json")
+                        .content(json.writeValueAsString(Map.of("email", email))))
+                .andExpect(status().isServiceUnavailable()).andExpect(jsonPath("$.code").value("AUTH_NOT_CONFIGURED"));
         assertThat(jdbc.queryForObject("select count(*) from users where email=cast(? as citext)", Long.class, email)).isZero();
         assertThat(jdbc.queryForObject("select count(*) from auth_tokens where email=cast(? as citext)", Long.class, email)).isZero();
         assertThat(jdbc.queryForObject("select count(*) from background_jobs", Long.class)).isEqualTo(jobsBefore);

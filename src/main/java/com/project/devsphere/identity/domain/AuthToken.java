@@ -47,5 +47,5 @@ public class AuthToken extends UuidEntity {
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
-    public enum Purpose { VERIFY_EMAIL, RESET_PASSWORD }
+    public enum Purpose { VERIFY_EMAIL, RESET_PASSWORD, RESET_PASSWORD_GRANT }
 }

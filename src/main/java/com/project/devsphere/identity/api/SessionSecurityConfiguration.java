@@ -66,7 +66,10 @@ public class SessionSecurityConfiguration {
                     REVOKE_SESSION,
                     ROUTES.matcher(HttpMethod.POST, "/api/v1/auth/register"),
                     ROUTES.matcher(HttpMethod.POST, "/api/v1/auth/verify-email"),
-                    ROUTES.matcher(HttpMethod.POST, "/api/v1/auth/verification/resend")
+                    ROUTES.matcher(HttpMethod.POST, "/api/v1/auth/verification/resend"),
+                    ROUTES.matcher(HttpMethod.POST, "/api/v1/auth/forgot-password"),
+                    ROUTES.matcher(HttpMethod.POST, "/api/v1/auth/forgot-password/verify"),
+                    ROUTES.matcher(HttpMethod.POST, "/api/v1/auth/reset-password")
                 )
             )
             .sessionManagement(session -> session
@@ -86,6 +89,9 @@ public class SessionSecurityConfiguration {
                 .requestMatchers(HttpMethod.POST, "/api/v1/auth/register").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/v1/auth/verify-email").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/v1/auth/verification/resend").permitAll()
+                .requestMatchers(HttpMethod.POST, "/api/v1/auth/forgot-password").permitAll()
+                .requestMatchers(HttpMethod.POST, "/api/v1/auth/forgot-password/verify").permitAll()
+                .requestMatchers(HttpMethod.POST, "/api/v1/auth/reset-password").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/v1/auth/login").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/v1/auth/refresh").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/v1/auth/logout").permitAll()

@@ -21,13 +21,26 @@ public final class VerificationCodeCrypto {
     private static final String HMAC_ALGORITHM = "HmacSHA256";
     private static final String AES_ALGORITHM = "AES";
     private static final String CIPHER_TRANSFORMATION = "AES/GCM/NoPadding";
-    private static final byte[] PURPOSE = "VERIFY_EMAIL".getBytes(StandardCharsets.UTF_8);
 
     private static final int KEY_LENGTH_BYTES = 32;
     private static final int GCM_IV_LENGTH_BYTES = 12;
     private static final int GCM_TAG_LENGTH_BITS = 128;
     private static final int GCM_TAG_LENGTH_BYTES = GCM_TAG_LENGTH_BITS / 8;
     private static final int CODE_LENGTH = 6;
+
+    public enum Purpose {
+        VERIFY_EMAIL,
+        RESET_PASSWORD;
+
+        public static Purpose from(AuthToken.Purpose authTokenPurpose) {
+            if (authTokenPurpose == AuthToken.Purpose.VERIFY_EMAIL) {
+                return VERIFY_EMAIL;
+            } else if (authTokenPurpose == AuthToken.Purpose.RESET_PASSWORD) {
+                return RESET_PASSWORD;
+            }
+            throw new IllegalArgumentException("Unsupported OTP purpose: " + authTokenPurpose);
+        }
+    }
 
     private final byte[] hmacKey;
     private final byte[] encryptionKey;
@@ -54,12 +67,17 @@ public final class VerificationCodeCrypto {
     }
 
     public String hash(UUID id, String code) {
+        return hash(id, code, Purpose.VERIFY_EMAIL);
+    }
+
+    public String hash(UUID id, String code, Purpose purpose) {
         validateId(id);
+        validatePurpose(purpose);
         validateCode(code);
         try {
             Mac mac = Mac.getInstance(HMAC_ALGORITHM);
             mac.init(new SecretKeySpec(this.hmacKey, HMAC_ALGORITHM));
-            mac.update(buildAad(id));
+            mac.update(buildAad(id, purpose));
             byte[] rawHmac = mac.doFinal(code.getBytes(StandardCharsets.UTF_8));
             return Base64.getUrlEncoder().withoutPadding().encodeToString(rawHmac);
         } catch (GeneralSecurityException e) {
@@ -67,21 +85,43 @@ public final class VerificationCodeCrypto {
         }
     }
 
+    public String hash(UUID id, String code, AuthToken.Purpose purpose) {
+        return hash(id, code, Purpose.from(purpose));
+    }
+
     public boolean matches(UUID id, String code, String storedHash) {
-        if (id == null || code == null || storedHash == null || !isValidCode(code)) {
+        return matches(id, code, storedHash, Purpose.VERIFY_EMAIL);
+    }
+
+    public boolean matches(UUID id, String code, String storedHash, Purpose purpose) {
+        if (id == null || code == null || storedHash == null || purpose == null || !isValidCode(code)) {
             return false;
         }
         try {
             byte[] expected = Base64.getUrlDecoder().decode(storedHash);
-            byte[] actual = Base64.getUrlDecoder().decode(hash(id, code));
+            byte[] actual = Base64.getUrlDecoder().decode(hash(id, code, purpose));
             return MessageDigest.isEqual(expected, actual);
         } catch (IllegalArgumentException | IllegalStateException e) {
             return false;
         }
     }
 
+    public boolean matches(UUID id, String code, String storedHash, AuthToken.Purpose purpose) {
+        if (purpose == null) return false;
+        try {
+            return matches(id, code, storedHash, Purpose.from(purpose));
+        } catch (IllegalArgumentException e) {
+            return false;
+        }
+    }
+
     public String encrypt(UUID id, String code) {
+        return encrypt(id, code, Purpose.VERIFY_EMAIL);
+    }
+
+    public String encrypt(UUID id, String code, Purpose purpose) {
         validateId(id);
+        validatePurpose(purpose);
         validateCode(code);
         try {
             byte[] iv = new byte[GCM_IV_LENGTH_BYTES];
@@ -91,7 +131,7 @@ public final class VerificationCodeCrypto {
             SecretKey key = new SecretKeySpec(this.encryptionKey, AES_ALGORITHM);
             GCMParameterSpec parameterSpec = new GCMParameterSpec(GCM_TAG_LENGTH_BITS, iv);
             cipher.init(Cipher.ENCRYPT_MODE, key, parameterSpec);
-            cipher.updateAAD(buildAad(id));
+            cipher.updateAAD(buildAad(id, purpose));
 
             byte[] plaintext = code.getBytes(StandardCharsets.UTF_8);
             byte[] ciphertext = cipher.doFinal(plaintext);
@@ -106,8 +146,17 @@ public final class VerificationCodeCrypto {
         }
     }
 
+    public String encrypt(UUID id, String code, AuthToken.Purpose purpose) {
+        return encrypt(id, code, Purpose.from(purpose));
+    }
+
     public String decrypt(UUID id, String ciphertext) {
+        return decrypt(id, ciphertext, Purpose.VERIFY_EMAIL);
+    }
+
+    public String decrypt(UUID id, String ciphertext, Purpose purpose) {
         validateId(id);
+        validatePurpose(purpose);
         if (ciphertext == null || ciphertext.isBlank()) {
             throw new IllegalArgumentException("Invalid ciphertext");
         }
@@ -124,7 +173,7 @@ public final class VerificationCodeCrypto {
             SecretKey key = new SecretKeySpec(this.encryptionKey, AES_ALGORITHM);
             GCMParameterSpec parameterSpec = new GCMParameterSpec(GCM_TAG_LENGTH_BITS, iv);
             cipher.init(Cipher.DECRYPT_MODE, key, parameterSpec);
-            cipher.updateAAD(buildAad(id));
+            cipher.updateAAD(buildAad(id, purpose));
 
             byte[] plaintext = cipher.doFinal(cipherBytes);
             String code = new String(plaintext, StandardCharsets.UTF_8);
@@ -138,16 +187,25 @@ public final class VerificationCodeCrypto {
         }
     }
 
-    private static byte[] buildAad(UUID id) {
-        ByteBuffer buffer = ByteBuffer.allocate(16 + PURPOSE.length);
+    public String decrypt(UUID id, String ciphertext, AuthToken.Purpose purpose) {
+        return decrypt(id, ciphertext, Purpose.from(purpose));
+    }
+
+    private static byte[] buildAad(UUID id, Purpose purpose) {
+        byte[] purposeBytes = purpose.name().getBytes(StandardCharsets.UTF_8);
+        ByteBuffer buffer = ByteBuffer.allocate(16 + purposeBytes.length);
         buffer.putLong(id.getMostSignificantBits());
         buffer.putLong(id.getLeastSignificantBits());
-        buffer.put(PURPOSE);
+        buffer.put(purposeBytes);
         return buffer.array();
     }
 
     private static void validateId(UUID id) {
         Objects.requireNonNull(id, "ID cannot be null");
+    }
+
+    private static void validatePurpose(Purpose purpose) {
+        Objects.requireNonNull(purpose, "Purpose cannot be null");
     }
 
     private static void validateCode(String code) {
