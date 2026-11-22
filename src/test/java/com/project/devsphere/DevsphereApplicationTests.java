@@ -1,7 +1,6 @@
 package com.project.devsphere;
 
 import com.project.devsphere.identity.domain.AuthSession;
-import com.project.devsphere.identity.application.SessionService;
 import com.project.devsphere.identity.infrastructure.persistence.AuthSessionRepository;
 import com.project.devsphere.operations.infrastructure.persistence.JobQueue;
 import com.project.devsphere.operations.infrastructure.database.RuntimeRolePrivileges;
@@ -14,41 +13,29 @@ import com.project.devsphere.resource.infrastructure.persistence.DeveloperCapaci
 import com.project.devsphere.workitem.domain.WorkItem;
 import com.project.devsphere.workitem.infrastructure.persistence.WorkItemRepository;
 import jakarta.persistence.EntityManager;
-import jakarta.servlet.http.Cookie;
 import org.flywaydb.core.Flyway;
 import org.flywaydb.core.api.MigrationVersion;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.security.crypto.argon2.Argon2PasswordEncoder;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
-import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.utility.MountableFile;
-import tools.jackson.databind.json.JsonMapper;
 import java.math.BigDecimal;
 import java.net.InetAddress;
-import java.security.SecureRandom;
 import java.sql.SQLException;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.concurrent.*;
 import static org.assertj.core.api.Assertions.*;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK,
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE,
         properties = "devsphere.database.manage-runtime-privileges=false")
-@AutoConfigureMockMvc
 class DevsphereApplicationTests {
     static final String RUNTIME_PASSWORD = "temporary-test-'role-$password";
     static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:18.7")
@@ -64,22 +51,16 @@ class DevsphereApplicationTests {
         r.add("spring.datasource.password",POSTGRES::getPassword);
         r.add("spring.flyway.user",POSTGRES::getUsername);
         r.add("spring.flyway.password",POSTGRES::getPassword);
-        byte[] key = new byte[32];
-        new SecureRandom().nextBytes(key);
-        String sessionSigningKey = Base64.getEncoder().encodeToString(key);
-        r.add("devsphere.auth.session.signing-key", () -> sessionSigningKey);
     }
     @Autowired JdbcTemplate jdbc;
     @Autowired TransactionTemplate tx;
     @Autowired EntityManager em;
     @Autowired AuthSessionRepository sessions;
-    @Autowired SessionService sessionService;
     @Autowired WorkItemRepository items;
     @Autowired DeveloperCapacityRepository capacities;
     @Autowired ProjectTransactions projectTx;
     @Autowired JobQueue queue;
     @Autowired Flyway flyway;
-    @Autowired MockMvc mvc;
     record Fixture(UUID workspace,UUID project,UUID owner,UUID member) {}
 
     @BeforeEach void clearBusinessData() {
@@ -144,9 +125,8 @@ class DevsphereApplicationTests {
     @Test void migratesThirtySixTablesAndValidatesEveryJpaEntity() {
         assertThat(jdbc.queryForObject("select count(*) from information_schema.tables where table_schema='public' and table_type='BASE TABLE' and table_name<>'flyway_schema_history'",Integer.class)).isEqualTo(36);
         assertThat(em.getMetamodel().getEntities()).hasSize(36);
-        assertThat(flyway.info().applied()).extracting(item -> item.getVersion())
-                .containsExactlyElementsOf(List.of("1", "2", "3", "4", "5", "6", "7", "8").stream()
-                        .map(MigrationVersion::fromVersion).toList());
+        assertThat(flyway.info().applied()).hasSize(7);
+        assertThat(flyway.info().current().getVersion()).isEqualTo(MigrationVersion.fromVersion("7"));
         flyway.validate();
         assertThat(flyway.migrate().migrationsExecuted).isZero();
     }
@@ -154,196 +134,11 @@ class DevsphereApplicationTests {
         jdbc.execute("create database migration_upgrade_test");
         String url=POSTGRES.getJdbcUrl().replaceFirst("/[^/?]+(?=\\?|$)","/migration_upgrade_test");
         try {
-            for(var migration : flyway.info().applied()) {
-                var runner=Flyway.configure().dataSource(url,POSTGRES.getUsername(),POSTGRES.getPassword()).target(migration.getVersion().getVersion()).load();
+            for(int v=1;v<=7;v++) {
+                var runner=Flyway.configure().dataSource(url,POSTGRES.getUsername(),POSTGRES.getPassword()).target(Integer.toString(v)).load();
                 assertThat(runner.migrate().migrationsExecuted).isEqualTo(1);runner.validate();
             }
         } finally {jdbc.execute("drop database migration_upgrade_test with (force)");}
-    }
-    @Test void loginRotationAndReplayRevokeTheFamilyWithoutStoringRawTokens() {
-        UUID user = addPasswordUser("active@example.test", "ACTIVE");
-        var login = sessionService.login("ACTIVE@example.test", "A strong integration test password");
-        assertThat(login.outcome()).isEqualTo(SessionService.Outcome.SUCCESS);
-        assertThat(sessionService.authenticate(login.access().value())).get()
-                .extracting(SessionService.Principal::userId).isEqualTo(user);
-        assertThat(jdbc.queryForObject("select refresh_hash from auth_sessions where user_id=?", String.class, user))
-                .hasSize(64).isNotEqualTo(login.refresh());
-
-        var successor = sessionService.refresh(login.refresh());
-        assertThat(successor.outcome()).isEqualTo(SessionService.Outcome.SUCCESS);
-        assertThat(successor.refreshExpiresAt()).isEqualTo(login.refreshExpiresAt());
-        assertThat(successor.refresh()).isNotEqualTo(login.refresh());
-        assertThat(sessionService.authenticate(login.access().value())).isEmpty();
-        assertThat(sessionService.authenticate(successor.access().value())).isPresent();
-
-        assertThat(sessionService.refresh(login.refresh()).outcome()).isEqualTo(SessionService.Outcome.SESSION_REPLAYED);
-        assertThat(sessionService.authenticate(successor.access().value())).isEmpty();
-        assertThat(jdbc.queryForObject(
-                "select count(*) from auth_sessions where user_id=? and revoked_at is null", Long.class, user)).isZero();
-    }
-
-    @Test void inactiveAccountsAndWrongPasswordsCannotCreateSessions() {
-        addPasswordUser("pending@example.test", "PENDING");
-        UUID user = addPasswordUser("lock@example.test", "ACTIVE");
-        String password = "A strong integration test password";
-        var login = sessionService.login("lock@example.test", password);
-        assertThat(login.outcome()).isEqualTo(SessionService.Outcome.SUCCESS);
-        jdbc.update("update users set status='LOCKED' where id=?", user);
-
-        assertThat(sessionService.login("pending@example.test", password).outcome())
-                .isEqualTo(SessionService.Outcome.EMAIL_UNVERIFIED);
-        assertThat(sessionService.login("lock@example.test", "wrong").outcome())
-                .isEqualTo(SessionService.Outcome.INVALID_CREDENTIALS);
-        assertThat(sessionService.login("lock@example.test", password).outcome())
-                .isEqualTo(SessionService.Outcome.ACCOUNT_LOCKED);
-        assertThat(sessionService.authenticate(login.access().value())).isEmpty();
-        assertThat(sessionService.refresh(login.refresh()).outcome()).isEqualTo(SessionService.Outcome.INVALID_SESSION);
-    }
-
-    @Test void concurrentRefreshCreatesAtMostOneSuccessorAndRevokesItOnReplay() throws Exception {
-        UUID user = addPasswordUser("race@example.test", "ACTIVE");
-        var login = sessionService.login("race@example.test", "A strong integration test password");
-        assertThat(login.outcome()).isEqualTo(SessionService.Outcome.SUCCESS);
-        var start = new CountDownLatch(1);
-        try (var workers = Executors.newFixedThreadPool(2)) {
-            Callable<SessionService.Attempt> refresh = () -> {
-                if (!start.await(10, TimeUnit.SECONDS)) {
-                    throw new IllegalStateException("Timed out waiting to start concurrent refresh");
-                }
-                return sessionService.refresh(login.refresh());
-            };
-            var first = workers.submit(refresh);
-            var second = workers.submit(refresh);
-            start.countDown();
-            var results = List.of(first.get(15, TimeUnit.SECONDS), second.get(15, TimeUnit.SECONDS));
-            assertThat(results).extracting(SessionService.Attempt::outcome).containsExactlyInAnyOrder(
-                    SessionService.Outcome.SUCCESS, SessionService.Outcome.SESSION_REPLAYED);
-        }
-        assertThat(jdbc.queryForObject(
-                "select count(*) from auth_sessions where user_id=? and revoked_at is null", Long.class, user)).isZero();
-        assertThat(jdbc.queryForObject("select count(*) from auth_sessions where user_id=?", Long.class, user)).isEqualTo(2);
-    }
-
-    @Test void owningAccountCanRevokeOneFamilyWithoutAffectingOtherAccounts() {
-        addPasswordUser("owner@example.test", "ACTIVE");
-        addPasswordUser("other@example.test", "ACTIVE");
-        String password = "A strong integration test password";
-        var current = sessionService.login("owner@example.test", password);
-        var second = sessionService.login("owner@example.test", password);
-        var foreign = sessionService.login("other@example.test", password);
-        var owner = sessionService.authenticate(current.access().value()).orElseThrow();
-        var other = sessionService.authenticate(foreign.access().value()).orElseThrow();
-        var foreignFamily = sessionService.list(other).getFirst().familyId();
-        var owned = sessionService.list(owner);
-        assertThat(owned).hasSize(2).extracting(SessionService.SessionSummary::familyId).doesNotContain(foreignFamily);
-        var secondFamily = owned.stream().filter(item -> !item.current()).findFirst().orElseThrow().familyId();
-        assertThat(sessionService.revoke(owner, foreignFamily)).isFalse();
-        assertThat(sessionService.revoke(owner, secondFamily)).isTrue();
-        assertThat(sessionService.revoke(owner, secondFamily)).isFalse();
-        assertThat(sessionService.authenticate(second.access().value())).isEmpty();
-        assertThat(sessionService.authenticate(foreign.access().value())).isPresent();
-        assertThat(sessionService.authenticate(current.access().value())).isPresent();
-
-        sessionService.logout(current.refresh());
-        assertThat(sessionService.authenticate(current.access().value())).isEmpty();
-        assertThat(sessionService.list(owner)).isEmpty();
-        assertThat(sessionService.revoke(owner, secondFamily)).isFalse();
-    }
-
-    @Test
-    void sessionLifecycleAndReplayRevocation() throws Exception {
-        UUID userId = addPasswordUser("m12-test@example.com", "ACTIVE");
-        var mapper = new JsonMapper();
-
-        var csrfRes = mvc.perform(get("/api/v1/auth/csrf").secure(true))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.token").isString())
-                .andReturn();
-        Cookie csrfCookie = csrfRes.getResponse().getCookie("__Host-devsphere-csrf");
-        assertThat(csrfCookie).isNotNull();
-        var csrfJson = mapper.readTree(csrfRes.getResponse().getContentAsString());
-        String csrfHeader = csrfJson.get("headerName").asText();
-        String csrfToken = csrfJson.get("token").asText();
-
-        String loginBody = "{\"email\":\"m12-test@example.com\",\"password\":\"A strong integration test password\"}";
-        mvc.perform(post("/api/v1/auth/login").secure(true)
-                .contentType("application/json").content(loginBody))
-                .andExpect(status().isForbidden());
-
-        var loginRes = mvc.perform(post("/api/v1/auth/login").secure(true)
-                        .contentType("application/json").content(loginBody)
-                        .cookie(csrfCookie).header(csrfHeader, csrfToken))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.accessToken").isString())
-                .andReturn();
-        Cookie refresh1 = loginRes.getResponse().getCookie("__Secure-devsphere-refresh");
-        assertThat(refresh1).isNotNull();
-        String access1 = mapper.readTree(loginRes.getResponse().getContentAsString()).get("accessToken").asText();
-
-        mvc.perform(get("/api/v1/auth/me").secure(true).header("Authorization", "Bearer " + access1))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.userId").value(userId.toString()));
-
-        var refreshRes = mvc.perform(post("/api/v1/auth/refresh").secure(true)
-                        .cookie(csrfCookie, refresh1).header(csrfHeader, csrfToken))
-                .andExpect(status().isOk())
-                .andReturn();
-        Cookie refresh2 = refreshRes.getResponse().getCookie("__Secure-devsphere-refresh");
-        assertThat(refresh2).isNotNull();
-        assertThat(refresh2.getValue()).isNotEqualTo(refresh1.getValue());
-        String access2 = mapper.readTree(refreshRes.getResponse().getContentAsString()).get("accessToken").asText();
-
-        mvc.perform(get("/api/v1/auth/me").secure(true).header("Authorization", "Bearer " + access1))
-                .andExpect(status().isUnauthorized());
-        mvc.perform(get("/api/v1/auth/me").secure(true).header("Authorization", "Bearer " + access2))
-                .andExpect(status().isOk());
-
-        mvc.perform(post("/api/v1/auth/refresh").secure(true)
-                        .cookie(csrfCookie, refresh1).header(csrfHeader, csrfToken))
-                .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.code").value("SESSION_REPLAYED"));
-
-        mvc.perform(get("/api/v1/auth/me").secure(true).header("Authorization", "Bearer " + access2))
-                .andExpect(status().isUnauthorized());
-    }
-
-    @Test void sessionHttpEndpointsEnforceOwnershipAgainstPostgres() throws Exception {
-        addPasswordUser("api-owner@example.test", "ACTIVE");
-        addPasswordUser("api-other@example.test", "ACTIVE");
-        String password = "A strong integration test password";
-        var owner = sessionService.login("api-owner@example.test", password);
-        var other = sessionService.login("api-other@example.test", password);
-        assertThat(owner.outcome()).isEqualTo(SessionService.Outcome.SUCCESS);
-        assertThat(other.outcome()).isEqualTo(SessionService.Outcome.SUCCESS);
-
-        String ownerHeader = "Bearer " + owner.access().value();
-        String otherHeader = "Bearer " + other.access().value();
-        String path = "/api/v1/auth/sessions";
-        var mapper = new JsonMapper();
-        var ownerSessions = mvc.perform(get(path).secure(true).header("Authorization", ownerHeader))
-                .andExpect(status().isOk()).andExpect(jsonPath("$[0].current").value(true))
-                .andExpect(jsonPath("$[1]").doesNotExist()).andReturn().getResponse();
-        var otherSessions = mvc.perform(get(path).secure(true).header("Authorization", otherHeader))
-                .andExpect(status().isOk()).andExpect(jsonPath("$[1]").doesNotExist()).andReturn().getResponse();
-        String ownerFamily = mapper.readTree(ownerSessions.getContentAsString()).get(0).get("familyId").asText();
-        String otherFamily = mapper.readTree(otherSessions.getContentAsString()).get(0).get("familyId").asText();
-        assertThat(ownerFamily).isNotEqualTo(otherFamily);
-
-        mvc.perform(delete(path + "/" + otherFamily).secure(true).header("Authorization", ownerHeader))
-                .andExpect(status().isNotFound());
-        mvc.perform(delete(path + "/" + ownerFamily).secure(true).header("Authorization", ownerHeader))
-                .andExpect(status().isNoContent());
-        mvc.perform(get(path).secure(true).header("Authorization", ownerHeader)).andExpect(status().isUnauthorized());
-        mvc.perform(get(path).secure(true).header("Authorization", otherHeader))
-                .andExpect(status().isOk()).andExpect(jsonPath("$[0].familyId").value(otherFamily));
-    }
-
-    private UUID addPasswordUser(String email, String status) {
-        UUID id = UUID.randomUUID();
-        var encoder = new Argon2PasswordEncoder(16, 32, 1, 19456, 2);
-        jdbc.update("insert into users(id,email,display_name,status,password_hash) values (?,?,?,?,?)",
-                id, email, "Session Test User", status, encoder.encode("A strong integration test password"));
-        return id;
     }
     @Test void ownerMustExistAndMatchWorkspacePointerAtCommit() {
         UUID u=addUser("No membership");

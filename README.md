@@ -6,11 +6,6 @@ Backend Java 27 / Spring Boot 4.1.2, PostgreSQL 18.7. Database được quản l
 
 ## Khởi động database và backend
 
-Cấp `AUTH_SESSION_SIGNING_KEY` trước khi chạy backend. Khóa gồm 32 byte
-ngẫu nhiên mã hóa Base64, được cung cấp qua kho bí mật hoặc biến môi trường.
-Backend kiểm tra khóa khi khởi động. Đặt issuer và audience theo hướng dẫn
-ở phần xác thực phiên bên dưới.
-
 Copy `.env.example` thành `.env`, đặt hai mật khẩu khác nhau cho tài khoản migration và tài khoản ứng dụng. File `.env` được Git bỏ qua. Dùng các dòng `KEY=value` không bọc dấu nháy trong file local này; Spring Boot đọc nó như Java properties. Với mật khẩu chứa dấu gạch chéo ngược hoặc cú pháp đặc biệt, cấu hình qua biến môi trường thay vì file local.
 
 ```sh
@@ -68,25 +63,3 @@ Mỗi lần gửi thư kiểm tra mã, tài khoản và lease trước khi gọi
 được xác minh hoặc thay thế sau lần kiểm tra đó, thư đang gửi có thể vẫn đến.
 Mã cũ mất hiệu lực ngay khi giao dịch xác minh hoặc gửi lại hoàn tất.
 Lần retry kiểm tra lại trạng thái và dọn dữ liệu OTP của job đã mất hiệu lực.
-
-
-## Xác thực phiên backend
-
-Đặt `AUTH_SESSION_SIGNING_KEY` vào môi trường của tiến trình backend bằng
-secret manager hoặc shell. Khóa phải là 32 byte mã hóa Base64. Backend báo lỗi
-khi khởi động nếu thiếu khóa hoặc khóa sai định dạng. Có thể cấu hình
-`AUTH_SESSION_ISSUER` và `AUTH_SESSION_AUDIENCE` cho môi trường triển khai.
-
-Client web gọi `GET /api/v1/auth/csrf`, giữ cookie và dùng `headerName` cùng
-`token` từ response khi gửi login, refresh và logout. Dùng HTTPS và cùng origin
-với API. Truyền access token qua `Authorization: Bearer <token>`; cookie
-refresh được trình duyệt quản lý. Khi refresh trả 401, bắt đầu đăng nhập mới.
-Client cần phối hợp các yêu cầu refresh để tránh gửi đồng thời cùng một token.
-
-Đăng nhập có giới hạn trong từng tiến trình theo email và địa chỉ kết nối
-trực tiếp. Khi chạy sau proxy hoặc nhiều replica, áp dụng thêm giới hạn dùng
-chung tại gateway. `GET /api/v1/auth/sessions` liệt kê phiên của tài khoản hiện
-tại. `DELETE /api/v1/auth/sessions/{familyId}` thu hồi một họ phiên.
-
-Xem [hợp đồng API phiên](docs/backend/sessions-openapi.yaml) và
-[nhật ký triển khai](docs/backend/sessions-implementation-log.md).

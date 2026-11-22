@@ -28,9 +28,8 @@ Xem [gallery ERD](index.html), [data dictionary](data-dictionary.md) và [catalo
 | V005 | Alert, chat, notification, attachment, report, AI, audit và jobs |
 | V006 | FK ghép, bất biến dữ liệu, bảo vệ lịch sử, kiểm tra workflow và các view |
 | V007 | Job gửi OTP xác minh email và chỉ mục tra cứu mã xác minh theo người dùng |
-| V008 | Dấu rotation cho refresh token và ràng buộc lịch sử phiên |
 
-V001–V006 tạo nền tảng lưu trữ. V007 thêm loại job `AUTH_VERIFY_EMAIL` và chỉ mục cho token xác minh theo người dùng. V008 ghi dấu thời điểm rotation của phiên. Flyway áp dụng đủ tám migration trước khi backend khởi động. Schema vẫn có 36 bảng nghiệp vụ. Bộ ERD, data dictionary và catalog JSON ghi lại mốc V006.
+V001–V006 tạo nền tảng lưu trữ. V007 thêm loại job `AUTH_VERIFY_EMAIL` và chỉ mục cho token xác minh theo người dùng. Flyway áp dụng đủ bảy migration trước khi backend khởi động. Schema vẫn có 36 bảng nghiệp vụ. Bộ ERD, data dictionary và catalog JSON ghi lại mốc V006.
 
 Quy ước: mỗi migration thuộc một commit riêng. Khi migration đã được áp dụng và phát hành, tạo migration mới thay vì sửa checksum cũ. Thay đổi lớn nên theo trình tự thêm cấu trúc tương thích, chuyển dữ liệu theo lô, chuyển ứng dụng rồi mới bỏ cấu trúc cũ. Không dùng Hibernate `update` hoặc `create` để thay đổi schema.
 
