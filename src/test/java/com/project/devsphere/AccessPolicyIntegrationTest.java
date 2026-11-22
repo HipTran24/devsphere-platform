@@ -212,7 +212,7 @@ public class AccessPolicyIntegrationTest {
 
     private UUID addProjectMemberRole(UUID projectId, UUID projectMemberId, String role, UUID grantedBy, UUID acceptedBy, OffsetDateTime revokedAt) {
         UUID roleId = UUID.randomUUID();
-        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
+        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC).minusSeconds(2);
         jdbc.update(
                 "INSERT INTO project_member_roles (id, project_id, project_member_id, role, granted_by, granted_at, accepted_by, accepted_at, revoked_at, created_at) " +
                         "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",

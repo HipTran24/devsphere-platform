@@ -47,6 +47,7 @@ public class SessionSecurityConfiguration {
     private static final RequestMatcher ADMIN_PATCH_ENDPOINTS = ROUTES.matcher(HttpMethod.PATCH, "/api/v1/admin/**");
     private static final RequestMatcher WORKSPACE_ENDPOINTS = ROUTES.matcher("/api/v1/workspaces/**");
     private static final RequestMatcher WORKSPACE_POST_ENDPOINTS = ROUTES.matcher(HttpMethod.POST, "/api/v1/workspaces/**");
+    private static final RequestMatcher WORKSPACE_PUT_ENDPOINTS = ROUTES.matcher(HttpMethod.PUT, "/api/v1/workspaces/**");
     private static final RequestMatcher WORKSPACE_PATCH_ENDPOINTS = ROUTES.matcher(HttpMethod.PATCH, "/api/v1/workspaces/**");
     private static final RequestMatcher WORKSPACE_DELETE_ENDPOINTS = ROUTES.matcher(HttpMethod.DELETE, "/api/v1/workspaces/**");
     private static final RequestMatcher BEARER_ENDPOINTS =
@@ -75,6 +76,7 @@ public class SessionSecurityConfiguration {
                     REVOKE_SESSION,
                     ADMIN_PATCH_ENDPOINTS,
                     WORKSPACE_POST_ENDPOINTS,
+                    WORKSPACE_PUT_ENDPOINTS,
                     WORKSPACE_PATCH_ENDPOINTS,
                     WORKSPACE_DELETE_ENDPOINTS,
                     ROUTES.matcher(HttpMethod.POST, "/api/v1/auth/register"),

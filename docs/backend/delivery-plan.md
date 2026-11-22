@@ -14,7 +14,7 @@ Các mục bên dưới giữ nguyên số thứ tự trong danh sách 29 hạng
 | `codex/m1-sprint-progress` | 11 | Kế hoạch và vòng đời Sprint, đóng Sprint lưu snapshot, trả việc chưa xong, số liệu dựa trên dữ liệu đã nghiệm thu. |
 | `codex/m2-github-connection` | 16, 17, 18 | Installation scope chính xác, webhook xác thực/chống trùng tại ingress, retry và ánh xạ branch/commit/PR vào đúng Project và Task. Kiểm tra môi trường GitHub App riêng. |
 | `codex/m2-code-quality` | 19, 20, 21 | CI và human review gắn HEAD SHA, review độc lập tác giả, gate chặn khi thiếu bằng chứng. Merge chỉ cung cấp bằng chứng, PM nghiệm thu Task. Đã hoàn thành và xác minh: [code-quality-implementation-log.md](code-quality-implementation-log.md). |
-| `codex/m3-developer-capacity` | 12 | Quản lý kỹ năng, ca làm, nghỉ và phạm vi hiệu lực. Kiểm tra overlap và đảm bảo đúng Project. |
+| `codex/m3-developer-capacity` | 12 | Quản lý kỹ năng, ca làm, nghỉ và phạm vi hiệu lực. Kiểm tra overlap và đảm bảo đúng Project. Đã hoàn thành và xác minh: [developer-capacity-implementation-log.md](developer-capacity-implementation-log.md). |
 | `codex/m3-solver-proposals` | 13, 14 | OR-Tools chạy giới hạn thời gian, model tuân thủ constraint, phân biệt FEASIBLE/OPTIMAL/INFEASIBLE/UNKNOWN, lưu bản nguồn và diagnostics. |
 | `codex/m3-plan-approval` | 15 và Apply của 9 | Preview trước/sau, PM duyệt, CLIENT xác nhận deadline cam kết, commit nguyên tử hoặc rollback, idempotency, stale và lịch baseline versioned. |
 | `codex/m4-monitoring-replan` | 22, 23 | CPM có slack và ảnh hưởng hạ nguồn, alert chống trùng/reopen, tiến độ theo chứng cứ, replan giữ frozen và đợi PM. |
