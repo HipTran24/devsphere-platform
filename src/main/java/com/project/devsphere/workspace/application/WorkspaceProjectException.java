@@ -80,4 +80,32 @@ public class WorkspaceProjectException extends RuntimeException {
     public static WorkspaceProjectException pmRoleRestricted(String message) {
         return new WorkspaceProjectException(HttpStatus.BAD_REQUEST, "PM_ROLE_RESTRICTED", message);
     }
+
+    public static WorkspaceProjectException dependencyCycle(String message) {
+        return new WorkspaceProjectException(HttpStatus.CONFLICT, "DEPENDENCY_CYCLE", message);
+    }
+
+    public static WorkspaceProjectException scopeLocked(String message) {
+        return new WorkspaceProjectException(HttpStatus.CONFLICT, "SCOPE_LOCKED", message);
+    }
+
+    public static WorkspaceProjectException invalidHierarchy(String message) {
+        return new WorkspaceProjectException(HttpStatus.CONFLICT, "INVALID_HIERARCHY", message);
+    }
+
+    public static WorkspaceProjectException hierarchyCycle(String message) {
+        return new WorkspaceProjectException(HttpStatus.CONFLICT, "HIERARCHY_CYCLE", message);
+    }
+
+    public static WorkspaceProjectException assigneeNotDeveloper(String message) {
+        return new WorkspaceProjectException(HttpStatus.BAD_REQUEST, "ASSIGNEE_NOT_DEVELOPER", message);
+    }
+
+    public static WorkspaceProjectException invalidStateTransition(String message) {
+        return new WorkspaceProjectException(HttpStatus.CONFLICT, "INVALID_STATE_TRANSITION", message);
+    }
+
+    public static WorkspaceProjectException taskAcceptanceRequiresPm(String message) {
+        return new WorkspaceProjectException(HttpStatus.FORBIDDEN, "TASK_ACCEPTANCE_REQUIRES_PM", message);
+    }
 }

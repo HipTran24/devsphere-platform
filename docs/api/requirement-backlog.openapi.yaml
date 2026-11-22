@@ -1,0 +1,1325 @@
+openapi: 3.1.0
+info:
+  title: DevSphere Requirements, Backlog & Work Items API
+  version: 1.0.0
+  description: >
+    RESTful API endpoints for requirements engineering, change request lifecycle,
+    hierarchical work item breakdown, task state machines, acceptance criteria verification,
+    and DAG dependency cycle validation.
+servers:
+  - url: /api/v1
+paths:
+  /workspaces/{workspaceId}/projects/{projectId}/requirements:
+    parameters:
+      - name: workspaceId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: projectId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    post:
+      summary: Create requirement
+      description: Creates a new requirement in DRAFT status and version 1. Requires PM.
+      operationId: createRequirement
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title]
+              properties:
+                title:
+                  type: string
+                  example: User Authentication Flow
+                description:
+                  type: string
+                  example: Detailed requirements for registration and login
+                acceptanceSummary:
+                  type: string
+                  example: OAuth2 and OTP validation supported
+      responses:
+        '201':
+          description: Requirement created
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+    get:
+      summary: List project requirements
+      description: Returns requirements for the project. Requires project membership.
+      operationId: listRequirements
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: List of requirements
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /workspaces/{workspaceId}/projects/{projectId}/requirements/{requirementId}:
+    parameters:
+      - name: workspaceId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: projectId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: requirementId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    get:
+      summary: Get requirement details
+      description: Returns requirement details and version history.
+      operationId: getRequirement
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Requirement details
+        '404':
+          $ref: '#/components/responses/ResourceNotFound'
+
+    patch:
+      summary: Update requirement
+      description: Appends a new requirement version. Approved versions are immutable. Requires PM.
+      operationId: updateRequirement
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [expectedVersion]
+              properties:
+                title:
+                  type: string
+                description:
+                  type: string
+                acceptanceSummary:
+                  type: string
+                changeReason:
+                  type: string
+                expectedVersion:
+                  type: integer
+                  format: int64
+      responses:
+        '200':
+          description: Requirement updated with new version
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '409':
+          description: Version conflict
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+
+  /workspaces/{workspaceId}/projects/{projectId}/requirements/{requirementId}/approve:
+    parameters:
+      - name: workspaceId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: projectId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: requirementId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    post:
+      summary: Approve requirement
+      description: Approves the current draft version. Approved versions become strictly immutable. Requires PM.
+      operationId: approveRequirement
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Requirement approved
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/ResourceNotFound'
+
+  /workspaces/{workspaceId}/projects/{projectId}/change-requests:
+    parameters:
+      - name: workspaceId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: projectId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    post:
+      summary: Submit change request
+      description: Submits a new Change Request in PENDING status. Submittable by CLIENT or PM.
+      operationId: submitChangeRequest
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title]
+              properties:
+                title:
+                  type: string
+                description:
+                  type: string
+                targetRequirementId:
+                  type: string
+                  format: uuid
+      responses:
+        '201':
+          description: Change request created
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+
+    get:
+      summary: List change requests
+      description: Returns change requests. PM sees all; Client sees only own submissions.
+      operationId: listChangeRequests
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: List of change requests
+
+  /workspaces/{workspaceId}/projects/{projectId}/change-requests/{crId}/decision:
+    parameters:
+      - name: workspaceId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: projectId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: crId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    post:
+      summary: Decide change request
+      description: >
+        PM records decision (APPROVED, REJECTED, DEFERRED) with mandatory reason.
+        If APPROVED, generates a plan_proposals draft without altering baseline.
+      operationId: decideChangeRequest
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [decision, decisionReason, expectedVersion]
+              properties:
+                decision:
+                  type: string
+                  enum: [APPROVED, REJECTED, DEFERRED]
+                decisionReason:
+                  type: string
+                expectedVersion:
+                  type: integer
+                  format: int64
+      responses:
+        '200':
+          description: Decision recorded
+
+  /workspaces/{workspaceId}/projects/{projectId}/work-items:
+    parameters:
+      - name: workspaceId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: projectId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    post:
+      summary: Create work item
+      description: >
+        Creates a new work item. Enforces hierarchy (EPIC -> USER_STORY -> TASK/BUG -> SUBTASK)
+        and auto-generates sequential item_key via ds_work_item_key. Requires PM or DEVELOPER.
+      operationId: createWorkItem
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateWorkItemRequest'
+      responses:
+        '201':
+          description: Work item created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkItemResponse'
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: Hierarchy violation (INVALID_HIERARCHY) or cycle (HIERARCHY_CYCLE)
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+
+    get:
+      summary: List work items
+      description: Returns active work items for the project matching optional filters. Excludes soft-deleted items.
+      operationId: listWorkItems
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [EPIC, USER_STORY, TASK, SUBTASK, BUG]
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [TO_DO, IN_PROGRESS, IN_REVIEW, DONE]
+        - name: assigneeId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: parentId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: requirementId
+          in: query
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: List of work items
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/WorkItemResponse'
+
+  /workspaces/{workspaceId}/projects/{projectId}/work-items/{workItemId}:
+    parameters:
+      - name: workspaceId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: projectId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: workItemId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    get:
+      summary: Get work item details
+      operationId: getWorkItem
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Work item details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkItemResponse'
+        '404':
+          $ref: '#/components/responses/ResourceNotFound'
+
+    patch:
+      summary: Update work item metadata
+      description: Updates non-status fields. Enforces optimistic locking. Blocked if item is DONE (SCOPE_LOCKED).
+      operationId: updateWorkItem
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateWorkItemRequest'
+      responses:
+        '200':
+          description: Work item updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkItemResponse'
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '409':
+          description: Item frozen (SCOPE_LOCKED) or version conflict (PLAN_STALE)
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+
+    delete:
+      summary: Soft delete work item
+      description: Soft deletes work item. Blocked if status is DONE or if item has active children.
+      operationId: deleteWorkItem
+      security:
+        - BearerAuth: []
+      responses:
+        '204':
+          description: Work item deleted
+        '400':
+          description: Cannot delete item with active children
+        '409':
+          description: Completed items cannot be deleted (SCOPE_LOCKED)
+
+  /workspaces/{workspaceId}/projects/{projectId}/work-items/{workItemId}/assign:
+    parameters:
+      - name: workspaceId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: projectId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: workItemId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    patch:
+      summary: Assign work item
+      description: Assigns work item to an active DEVELOPER. Blocked if item is DONE (SCOPE_LOCKED). Requires PM.
+      operationId: assignWorkItem
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssignWorkItemRequest'
+      responses:
+        '200':
+          description: Assignee updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkItemResponse'
+        '400':
+          description: Assignee lacks active DEVELOPER role (ASSIGNEE_NOT_DEVELOPER)
+        '409':
+          description: Item frozen (SCOPE_LOCKED)
+
+  /workspaces/{workspaceId}/projects/{projectId}/work-items/{workItemId}/status:
+    parameters:
+      - name: workspaceId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: projectId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: workItemId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    patch:
+      summary: Transition work item status
+      description: Transitions status (TO_DO -> IN_PROGRESS -> IN_REVIEW). Transition to DONE requires acceptance.
+      operationId: transitionStatus
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TransitionStatusRequest'
+      responses:
+        '200':
+          description: Status transitioned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkItemResponse'
+        '403':
+          description: Only assigned developer or PM can change status
+        '409':
+          description: Invalid state transition (INVALID_STATE_TRANSITION) or item frozen (SCOPE_LOCKED)
+
+  /workspaces/{workspaceId}/projects/{projectId}/work-items/{workItemId}/accept:
+    parameters:
+      - name: workspaceId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: projectId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: workItemId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    post:
+      summary: Accept work item to DONE
+      description: Accepts task in IN_REVIEW status to DONE. Sets accepted_by and completed_at. Requires PM.
+      operationId: acceptWorkItem
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Task accepted to DONE
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkItemResponse'
+        '403':
+          description: Acceptance requires active PM role (TASK_ACCEPTANCE_REQUIRES_PM)
+        '409':
+          description: Item not in IN_REVIEW status
+
+  /workspaces/{workspaceId}/projects/{projectId}/work-items/{workItemId}/reject:
+    parameters:
+      - name: workspaceId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: projectId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: workItemId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    post:
+      summary: Reject work item back to IN_PROGRESS
+      description: PM rejects task in IN_REVIEW back to IN_PROGRESS with optional rejection reason.
+      operationId: rejectWorkItem
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RejectWorkItemRequest'
+      responses:
+        '200':
+          description: Task rejected back to IN_PROGRESS
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkItemResponse'
+
+  /workspaces/{workspaceId}/projects/{projectId}/work-items/{workItemId}/blocked:
+    parameters:
+      - name: workspaceId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: projectId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: workItemId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    patch:
+      summary: Toggle blocked flag
+      description: Sets or clears blocked state with mandatory blockedReason when true. Blocked if DONE.
+      operationId: blockWorkItem
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BlockWorkItemRequest'
+      responses:
+        '200':
+          description: Blocked status updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkItemResponse'
+
+  /workspaces/{workspaceId}/projects/{projectId}/backlog:
+    parameters:
+      - name: workspaceId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: projectId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    get:
+      summary: Get backlog items
+      description: Returns active project work items sorted by backlog_rank ASC, id ASC.
+      operationId: getBacklog
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Backlog items list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/WorkItemResponse'
+
+  /workspaces/{workspaceId}/projects/{projectId}/dependencies:
+    parameters:
+      - name: workspaceId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: projectId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    post:
+      summary: Add DAG dependency edge
+      description: >
+        Adds a dependency between work items. Validates DAG acyclicity via trigger ds_dependency_dag().
+        Rejects cycles (DEPENDENCY_CYCLE) and self-dependencies. Requires PM.
+      operationId: addDependency
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateDependencyRequest'
+      responses:
+        '201':
+          description: Dependency link created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkItemDependencyResponse'
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '404':
+          $ref: '#/components/responses/ResourceNotFound'
+        '409':
+          description: Cycle detected (DEPENDENCY_CYCLE) or duplicate link
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+
+    get:
+      summary: List project dependencies
+      description: Returns all dependency edges in the project.
+      operationId: listDependencies
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: List of dependency edges
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/WorkItemDependencyResponse'
+
+  /workspaces/{workspaceId}/projects/{projectId}/dependencies/{dependencyId}:
+    parameters:
+      - name: workspaceId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: projectId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: dependencyId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    delete:
+      summary: Remove dependency edge
+      operationId: removeDependency
+      security:
+        - BearerAuth: []
+      responses:
+        '204':
+          description: Dependency edge removed
+        '404':
+          $ref: '#/components/responses/ResourceNotFound'
+
+  /workspaces/{workspaceId}/projects/{projectId}/work-items/{workItemId}/criteria:
+    parameters:
+      - name: workspaceId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: projectId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: workItemId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    post:
+      summary: Add acceptance criterion
+      description: Adds criterion with evidence kind and weight to work item. Requires PM.
+      operationId: createCriterion
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCriterionRequest'
+      responses:
+        '201':
+          description: Criterion added
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcceptanceCriterionResponse'
+
+    get:
+      summary: List acceptance criteria
+      operationId: listCriteria
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: List of criteria
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AcceptanceCriterionResponse'
+
+  /workspaces/{workspaceId}/projects/{projectId}/criteria/{criterionId}/verify:
+    parameters:
+      - name: workspaceId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: projectId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: criterionId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    patch:
+      summary: Verify acceptance criterion
+      description: PM verifies acceptance criterion. Sets verified_by and verified_at.
+      operationId: verifyCriterion
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VerifyCriterionRequest'
+      responses:
+        '200':
+          description: Criterion verified
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcceptanceCriterionResponse'
+
+  /workspaces/{workspaceId}/projects/{projectId}/criteria/{criterionId}:
+    parameters:
+      - name: workspaceId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: projectId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: criterionId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    delete:
+      summary: Delete acceptance criterion
+      operationId: deleteCriterion
+      security:
+        - BearerAuth: []
+      responses:
+        '204':
+          description: Criterion deleted
+        '404':
+          $ref: '#/components/responses/ResourceNotFound'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    CreateWorkItemRequest:
+      type: object
+      required:
+        - type
+        - title
+      properties:
+        type:
+          type: string
+          enum: [EPIC, USER_STORY, TASK, SUBTASK, BUG]
+        title:
+          type: string
+          example: Implement JWT Authentication
+        description:
+          type: string
+        parentId:
+          type: string
+          format: uuid
+        requirementId:
+          type: string
+          format: uuid
+        sprintId:
+          type: string
+          format: uuid
+        milestoneId:
+          type: string
+          format: uuid
+        priority:
+          type: string
+          enum: [LOW, MEDIUM, HIGH, CRITICAL]
+          default: MEDIUM
+        storyPoints:
+          type: number
+          example: 5
+        estimateMinutes:
+          type: integer
+          example: 240
+        labels:
+          type: array
+          items:
+            type: string
+        assigneeId:
+          type: string
+          format: uuid
+        dueAt:
+          type: string
+          format: date-time
+
+    UpdateWorkItemRequest:
+      type: object
+      required:
+        - expectedVersion
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        priority:
+          type: string
+          enum: [LOW, MEDIUM, HIGH, CRITICAL]
+        storyPoints:
+          type: number
+        estimateMinutes:
+          type: integer
+        remainingMinutes:
+          type: integer
+        labels:
+          type: array
+          items:
+            type: string
+        parentId:
+          type: string
+          format: uuid
+        sprintId:
+          type: string
+          format: uuid
+        milestoneId:
+          type: string
+          format: uuid
+        requirementId:
+          type: string
+          format: uuid
+        dueAt:
+          type: string
+          format: date-time
+        expectedVersion:
+          type: integer
+          format: int64
+          minimum: 0
+
+    AssignWorkItemRequest:
+      type: object
+      properties:
+        assigneeId:
+          type: string
+          format: uuid
+        expectedVersion:
+          type: integer
+          format: int64
+          minimum: 0
+
+    TransitionStatusRequest:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          enum: [IN_PROGRESS, IN_REVIEW]
+        expectedVersion:
+          type: integer
+          format: int64
+          minimum: 0
+
+    RejectWorkItemRequest:
+      type: object
+      properties:
+        rejectionReason:
+          type: string
+        expectedVersion:
+          type: integer
+          format: int64
+          minimum: 0
+
+    BlockWorkItemRequest:
+      type: object
+      required:
+        - isBlocked
+      properties:
+        isBlocked:
+          type: boolean
+        blockedReason:
+          type: string
+        expectedVersion:
+          type: integer
+          format: int64
+          minimum: 0
+
+    WorkItemResponse:
+      type: object
+      required:
+        - id
+        - projectId
+        - itemKey
+        - type
+        - title
+        - status
+        - priority
+        - version
+      properties:
+        id:
+          type: string
+          format: uuid
+        projectId:
+          type: string
+          format: uuid
+        itemKey:
+          type: string
+          example: DEV-1
+        parentId:
+          type: string
+          format: uuid
+        requirementId:
+          type: string
+          format: uuid
+        sprintId:
+          type: string
+          format: uuid
+        milestoneId:
+          type: string
+          format: uuid
+        type:
+          type: string
+          enum: [EPIC, USER_STORY, TASK, SUBTASK, BUG]
+        workKind:
+          type: string
+          enum: [CODE, NON_CODE]
+        title:
+          type: string
+        description:
+          type: string
+        status:
+          type: string
+          enum: [TO_DO, IN_PROGRESS, IN_REVIEW, DONE]
+        isBlocked:
+          type: boolean
+        blockedReason:
+          type: string
+        priority:
+          type: string
+          enum: [LOW, MEDIUM, HIGH, CRITICAL]
+        assigneeId:
+          type: string
+          format: uuid
+        labels:
+          type: array
+          items:
+            type: string
+        backlogRank:
+          type: number
+        storyPoints:
+          type: number
+        estimateMinutes:
+          type: integer
+        remainingMinutes:
+          type: integer
+        timeSpentMinutes:
+          type: integer
+        claimedProgress:
+          type: number
+        verifiedProgress:
+          type: number
+        startedAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+        dueAt:
+          type: string
+          format: date-time
+        acceptedBy:
+          type: string
+          format: uuid
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        version:
+          type: integer
+          format: int64
+
+    CreateDependencyRequest:
+      type: object
+      required:
+        - predecessorId
+        - successorId
+      properties:
+        predecessorId:
+          type: string
+          format: uuid
+        successorId:
+          type: string
+          format: uuid
+        linkType:
+          type: string
+          default: FINISH_TO_START
+        lagMinutes:
+          type: integer
+          default: 0
+
+    WorkItemDependencyResponse:
+      type: object
+      required:
+        - id
+        - projectId
+        - predecessorId
+        - successorId
+        - linkType
+        - lagMinutes
+        - createdAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        projectId:
+          type: string
+          format: uuid
+        predecessorId:
+          type: string
+          format: uuid
+        successorId:
+          type: string
+          format: uuid
+        linkType:
+          type: string
+        lagMinutes:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+
+    CreateCriterionRequest:
+      type: object
+      required:
+        - description
+      properties:
+        description:
+          type: string
+        evidenceKind:
+          type: string
+          enum: [CI_TEST, PR, FILE, MANUAL]
+          default: MANUAL
+        weight:
+          type: number
+          default: 1.0
+        position:
+          type: integer
+
+    VerifyCriterionRequest:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          enum: [NOT_EVALUATED, VERIFIED, NOT_MET, INSUFFICIENT_EVIDENCE]
+          default: VERIFIED
+
+    AcceptanceCriterionResponse:
+      type: object
+      required:
+        - id
+        - projectId
+        - workItemId
+        - position
+        - description
+        - evidenceKind
+        - weight
+        - status
+        - version
+      properties:
+        id:
+          type: string
+          format: uuid
+        projectId:
+          type: string
+          format: uuid
+        workItemId:
+          type: string
+          format: uuid
+        position:
+          type: integer
+        description:
+          type: string
+        evidenceKind:
+          type: string
+          enum: [CI_TEST, PR, FILE, MANUAL]
+        weight:
+          type: number
+        status:
+          type: string
+          enum: [NOT_EVALUATED, VERIFIED, NOT_MET, INSUFFICIENT_EVIDENCE]
+        verifiedBy:
+          type: string
+          format: uuid
+        verifiedAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        version:
+          type: integer
+          format: int64
+
+    ProblemDetail:
+      type: object
+      required:
+        - status
+        - title
+      properties:
+        status:
+          type: integer
+        title:
+          type: string
+        detail:
+          type: string
+        code:
+          type: string
+
+  responses:
+    ValidationFailed:
+      description: Input validation failed or malformed request payload
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+
+    Unauthorized:
+      description: Authentication missing, invalid, or expired
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+
+    Forbidden:
+      description: Access denied or insufficient permissions
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+
+    ResourceNotFound:
+      description: Target entity was not found
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
