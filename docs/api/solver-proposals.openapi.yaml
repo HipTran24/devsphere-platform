@@ -1,0 +1,454 @@
+openapi: 3.1.0
+info:
+  title: DevSphere Scheduling Proposals and Solver API
+  version: 1.0.0
+  description: >-
+    REST API for managing manual and replanning plan proposals, solver invocations,
+    optimistic concurrency guards, and solver diagnostics under DevSphere projects.
+
+servers:
+  - url: /api/v1
+    description: DevSphere API Base
+
+paths:
+  /workspaces/{workspaceId}/projects/{projectId}/plan-proposals:
+    post:
+      summary: Create draft plan proposal
+      description: Creates a new proposal draft in DRAFT status guarded by project version check and PM role.
+      parameters:
+        - name: workspaceId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePlanProposalRequest'
+      responses:
+        '201':
+          description: Proposal draft created successfully
+          headers:
+            Location:
+              schema:
+                type: string
+                example: /api/v1/workspaces/a1b2c3d4-e5f6-7890-abcd-ef1234567890/projects/b2c3d4e5-f6a7-8901-bcde-f12345678901/plan-proposals/c3d4e5f6-a7b8-9012-cdef-123456789012
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanProposalResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestProblem'
+        '403':
+          $ref: '#/components/responses/ForbiddenProblem'
+        '409':
+          $ref: '#/components/responses/ConflictProblem'
+        '422':
+          $ref: '#/components/responses/UnprocessableProblem'
+
+    get:
+      summary: List project plan proposals
+      description: Returns all plan proposals created for the designated project, ordered by creation date descending.
+      parameters:
+        - name: workspaceId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: List of plan proposals
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PlanProposalResponse'
+        '403':
+          $ref: '#/components/responses/ForbiddenProblem'
+
+  /workspaces/{workspaceId}/projects/{projectId}/plan-proposals/{proposalId}:
+    get:
+      summary: Get plan proposal details
+      description: Retrieves complete plan proposal record by ID.
+      parameters:
+        - name: workspaceId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: proposalId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Proposal details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanProposalResponse'
+        '403':
+          $ref: '#/components/responses/ForbiddenProblem'
+        '404':
+          $ref: '#/components/responses/NotFoundProblem'
+
+  /workspaces/{workspaceId}/projects/{projectId}/plan-proposals/{proposalId}/solve:
+    post:
+      summary: Execute proposal solver
+      description: Executes the CP-SAT scheduling solver against project capacity and updates proposal via two-phase trigger-safe publication.
+      parameters:
+        - name: workspaceId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: proposalId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SolveProposalRequest'
+      responses:
+        '200':
+          description: Solver execution completed and proposal updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanProposalResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestProblem'
+        '403':
+          $ref: '#/components/responses/ForbiddenProblem'
+        '404':
+          $ref: '#/components/responses/NotFoundProblem'
+        '409':
+          $ref: '#/components/responses/ConflictProblem'
+
+  /workspaces/{workspaceId}/projects/{projectId}/plan-proposals/{proposalId}/diagnostics:
+    get:
+      summary: Get solver diagnostics
+      description: Retrieves solver performance, bounds, and diagnostic metrics from the solved proposal.
+      parameters:
+        - name: workspaceId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: proposalId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Solver diagnostics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SolverDiagnosticsResponse'
+        '403':
+          $ref: '#/components/responses/ForbiddenProblem'
+        '404':
+          $ref: '#/components/responses/NotFoundProblem'
+
+components:
+  schemas:
+    CreatePlanProposalRequest:
+      type: object
+      required:
+        - expectedProjectVersion
+      properties:
+        kind:
+          type: string
+          enum: [AI_REQUIREMENT, MANUAL_REPLAN, AUTO_REPLAN]
+          default: MANUAL_REPLAN
+        expectedProjectVersion:
+          type: integer
+          minimum: 0
+        baseScheduleVersionId:
+          type: string
+          format: uuid
+        requirementVersionId:
+          type: string
+          format: uuid
+        changeRequestId:
+          type: string
+          format: uuid
+        proposalPayload:
+          type: object
+        assumptions:
+          type: array
+          items:
+            type: object
+        changesCommittedDeadline:
+          type: boolean
+          default: false
+        proposedCommittedDeadline:
+          type: string
+          format: date
+
+    SolveProposalRequest:
+      type: object
+      required:
+        - expectedProjectVersion
+        - expectedProposalVersion
+      properties:
+        expectedProjectVersion:
+          type: integer
+          minimum: 0
+        expectedProposalVersion:
+          type: integer
+          minimum: 0
+        solverLimitSeconds:
+          type: integer
+          minimum: 1
+          maximum: 30
+          default: 30
+        horizonStart:
+          type: string
+          format: date
+        horizonEnd:
+          type: string
+          format: date
+
+    PlanProposalResponse:
+      type: object
+      required:
+        - id
+        - projectId
+        - kind
+        - baseProjectVersion
+        - status
+        - solverStatus
+        - proposalPayload
+        - solverDetails
+        - assumptions
+        - createdBy
+        - changesCommittedDeadline
+        - createdAt
+        - updatedAt
+        - version
+      properties:
+        id:
+          type: string
+          format: uuid
+        projectId:
+          type: string
+          format: uuid
+        kind:
+          type: string
+          enum: [AI_REQUIREMENT, MANUAL_REPLAN, AUTO_REPLAN]
+        baseProjectVersion:
+          type: integer
+        baseScheduleVersionId:
+          type: string
+          format: uuid
+        requirementVersionId:
+          type: string
+          format: uuid
+        changeRequestId:
+          type: string
+          format: uuid
+        aiJobId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [DRAFT, PENDING_APPROVAL, APPROVED, REJECTED, APPLIED, STALE]
+        proposalPayload:
+          type: object
+        solverStatus:
+          type: string
+          enum: [NOT_RUN, OPTIMAL, FEASIBLE, INFEASIBLE, UNKNOWN, ERROR]
+        solverDetails:
+          type: object
+        assumptions:
+          type: array
+          items:
+            type: object
+        createdBy:
+          type: string
+          format: uuid
+        approvedBy:
+          type: string
+          format: uuid
+        approvedAt:
+          type: string
+          format: date-time
+        changesCommittedDeadline:
+          type: boolean
+        proposedCommittedDeadline:
+          type: string
+          format: date
+        deadlineConfirmedBy:
+          type: string
+          format: uuid
+        deadlineConfirmedAt:
+          type: string
+          format: date-time
+        deadlineConfirmationVersion:
+          type: integer
+        deadlineConfirmedProjectVersion:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        version:
+          type: integer
+
+    SolverDiagnosticsResponse:
+      type: object
+      required:
+        - proposalId
+        - solverStatus
+        - rawNativeStatus
+        - wallTimeSeconds
+        - userTimeSeconds
+        - numBooleans
+        - numBranches
+        - numConflicts
+        - bestObjectiveBound
+        - objectiveValue
+        - message
+        - makespanMinutes
+        - totalLatenessMinutes
+        - details
+        - proposalVersion
+      properties:
+        proposalId:
+          type: string
+          format: uuid
+        solverStatus:
+          type: string
+          enum: [NOT_RUN, OPTIMAL, FEASIBLE, INFEASIBLE, UNKNOWN, ERROR]
+        rawNativeStatus:
+          type: string
+        wallTimeSeconds:
+          type: number
+        userTimeSeconds:
+          type: number
+        numBooleans:
+          type: integer
+        numBranches:
+          type: integer
+        numConflicts:
+          type: integer
+        bestObjectiveBound:
+          type: number
+        objectiveValue:
+          type: number
+        message:
+          type: string
+        makespanMinutes:
+          type: integer
+        totalLatenessMinutes:
+          type: integer
+        details:
+          type: object
+        proposalVersion:
+          type: integer
+
+    ProblemDetail:
+      type: object
+      required:
+        - type
+        - title
+        - status
+        - detail
+      properties:
+        type:
+          type: string
+          format: uri
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        instance:
+          type: string
+          format: uri
+        code:
+          type: string
+
+  responses:
+    BadRequestProblem:
+      description: Invalid request payload or parameter format
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+    ForbiddenProblem:
+      description: Insufficient roles or non-member access denied
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+    NotFoundProblem:
+      description: Requested proposal or project entity not found
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+    ConflictProblem:
+      description: Concurrency version mismatch or stale plan base
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+    UnprocessableProblem:
+      description: Semantic error in proposal payload structure or dependency cycle
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
