@@ -50,8 +50,12 @@ public class SessionSecurityConfiguration {
     private static final RequestMatcher WORKSPACE_PUT_ENDPOINTS = ROUTES.matcher(HttpMethod.PUT, "/api/v1/workspaces/**");
     private static final RequestMatcher WORKSPACE_PATCH_ENDPOINTS = ROUTES.matcher(HttpMethod.PATCH, "/api/v1/workspaces/**");
     private static final RequestMatcher WORKSPACE_DELETE_ENDPOINTS = ROUTES.matcher(HttpMethod.DELETE, "/api/v1/workspaces/**");
+    private static final RequestMatcher CLIENT_PORTAL_ENDPOINTS = ROUTES.matcher("/api/v1/client-portal/**");
+    private static final RequestMatcher CLIENT_PORTAL_POST_ENDPOINTS = ROUTES.matcher(HttpMethod.POST, "/api/v1/client-portal/**");
+    private static final RequestMatcher CLIENT_PORTAL_PUT_ENDPOINTS = ROUTES.matcher(HttpMethod.PUT, "/api/v1/client-portal/**");
+    private static final RequestMatcher CLIENT_PORTAL_PATCH_ENDPOINTS = ROUTES.matcher(HttpMethod.PATCH, "/api/v1/client-portal/**");
     private static final RequestMatcher BEARER_ENDPOINTS =
-            new OrRequestMatcher(CURRENT_USER, LIST_SESSIONS, REVOKE_SESSION, ADMIN_ENDPOINTS, WORKSPACE_ENDPOINTS);
+            new OrRequestMatcher(CURRENT_USER, LIST_SESSIONS, REVOKE_SESSION, ADMIN_ENDPOINTS, WORKSPACE_ENDPOINTS, CLIENT_PORTAL_ENDPOINTS);
 
     @Bean
     public SecurityFilterChain securityFilterChain(
@@ -79,6 +83,9 @@ public class SessionSecurityConfiguration {
                     WORKSPACE_PUT_ENDPOINTS,
                     WORKSPACE_PATCH_ENDPOINTS,
                     WORKSPACE_DELETE_ENDPOINTS,
+                    CLIENT_PORTAL_POST_ENDPOINTS,
+                    CLIENT_PORTAL_PUT_ENDPOINTS,
+                    CLIENT_PORTAL_PATCH_ENDPOINTS,
                     ROUTES.matcher(HttpMethod.POST, "/api/v1/auth/register"),
                     ROUTES.matcher(HttpMethod.POST, "/api/v1/auth/verify-email"),
                     ROUTES.matcher(HttpMethod.POST, "/api/v1/auth/verification/resend"),

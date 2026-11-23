@@ -799,7 +799,7 @@ class PasswordRecoveryConcurrencyIntegrationTest {
         String hashB = crypto.hash(challengeB, otpB, VerificationCodeCrypto.Purpose.RESET_PASSWORD);
         String cipherB = crypto.encrypt(challengeB, otpB, VerificationCodeCrypto.Purpose.RESET_PASSWORD);
 
-        OffsetDateTime nowB = OffsetDateTime.now(ZoneOffset.UTC);
+        OffsetDateTime nowB = OffsetDateTime.now(ZoneOffset.UTC).minusSeconds(30);
         OffsetDateTime expiresB = nowB.plusMinutes(10);
         jdbc.update("""
                 INSERT INTO auth_tokens(id, user_id, email, purpose, token_hash, created_at, expires_at, used_at, attempts)
@@ -847,6 +847,7 @@ class PasswordRecoveryConcurrencyIntegrationTest {
         assertThat(bUsedAt).isNull();
 
         // Run worker cycle: processes jobs
+        worker.runJobCycle();
         worker.runJobCycle();
         worker.runJobCycle();
 
