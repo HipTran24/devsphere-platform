@@ -63,7 +63,7 @@ export default function AuthShell({ mode = "register", children }) {
     }
 
     return (
-        <main className={styles.page} onClickCapture={children ? undefined : handleNavigation}>
+        <main id="main-content" tabIndex={-1} className={styles.page} onClickCapture={children ? undefined : handleNavigation}>
             <div className={`${styles.card} ${isLogin ? styles.loginCard : ""}`}>
                 <aside className={styles.introPanel}>
                     <span className={`${styles.borderBeam} ${transitioning ? styles.borderBeamPaused : ""}`} aria-hidden="true" />

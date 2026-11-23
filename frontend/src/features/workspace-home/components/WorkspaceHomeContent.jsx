@@ -18,6 +18,10 @@ import {
 } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import WorkspaceNotifications from "./WorkspaceNotifications";
+import LoadingState from "../../../components/ui/LoadingState";
+import ErrorState from "../../../components/ui/ErrorState";
+import EmptyState from "../../../components/ui/EmptyState";
+import { formatUiError, resolveViewState } from "../../../components/ui/uiStateHelpers";
 import styles from "../styles/WorkspaceHomeContent.module.css";
 
 const menuItems = [
@@ -77,7 +81,20 @@ const sampleInvitations = [
 
 const invitationDateFormat = new Intl.DateTimeFormat("en-GB", { dateStyle: "medium", timeZone: "UTC" });
 
-export default function WorkspaceHomeContent({ workspaces = sampleWorkspaces, pendingInvitations = sampleInvitations }) {
+export default function WorkspaceHomeContent({
+    workspaces = sampleWorkspaces,
+    pendingInvitations = sampleInvitations,
+    loading = false,
+    error = null,
+    onRetry,
+    onCreateWorkspace,
+    invitationsLoading = false,
+    invitationsError = null,
+    onRetryInvitations,
+    notificationsLoading = false,
+    notificationsError = null,
+    onRetryNotifications,
+}) {
     const invitationGradientPrefix = useId();
     const workspaceGradientPrefix = useId();
     const [invitationResponses, setInvitationResponses] = useState({});
@@ -228,146 +245,187 @@ export default function WorkspaceHomeContent({ workspaces = sampleWorkspaces, pe
                                         setPage(1);
                                     }}
                                     onKeyDown={(event) => {
-                                        if (event.key === "Escape") closeSearch();
+                                        if (event.key === "Escape") {
+                                            event.preventDefault();
+                                            event.stopPropagation();
+                                            closeSearch();
+                                        }
                                     }}
                                 />
                             )}
                         </div>
                     </div>
 
-                    <div
-                        className={styles.workspaceTableFrame}
-                        style={{ "--workspaces-per-page": workspacesPerPage }}
-                        role="region"
-                        aria-label="My Workspaces"
-                        tabIndex={0}
-                    >
-                        <table className={styles.workspaceTable} aria-label="My Workspaces">
-                            <thead>
-                                <tr>
-                                    <th scope="col" aria-sort={nameSort ?? "none"}>
+                    {(() => {
+                        const workspaceViewState = resolveViewState({
+                            loading,
+                            error,
+                            isEmpty: workspaces.length === 0,
+                        });
+                        if (workspaceViewState === "loading") {
+                            return <LoadingState variant="list" label="Loading workspaces…" count={4} />;
+                        }
+                        if (workspaceViewState === "error") {
+                            const formatted = formatUiError(error, "Unable to load your workspaces.");
+                            return (
+                                <ErrorState
+                                    title={formatted.title}
+                                    message={formatted.message}
+                                    code={formatted.code}
+                                    onRetry={onRetry}
+                                    retryLabel="Retry"
+                                />
+                            );
+                        }
+                        if (workspaceViewState === "empty") {
+                            return (
+                                <EmptyState
+                                    icon={BriefcaseBusiness}
+                                    title="No workspaces yet"
+                                    description="You don’t have any workspaces yet. Create one to start planning and shipping together."
+                                    actionLabel={onCreateWorkspace ? "Create workspace" : undefined}
+                                    onAction={onCreateWorkspace}
+                                />
+                            );
+                        }
+                        if (visibleWorkspaces.length === 0) {
+                            return (
+                                <EmptyState
+                                    icon={Search}
+                                    title="No matching workspaces found"
+                                    description={`No workspaces match “${query.trim()}”. Try another keyword or clear your search.`}
+                                    actionLabel="Clear search"
+                                    onAction={closeSearch}
+                                />
+                            );
+                        }
+                        return (
+                            <>
+                                <div
+                                    className={styles.workspaceTableFrame}
+                                    style={{ "--workspaces-per-page": workspacesPerPage }}
+                                    role="region"
+                                    aria-label="My Workspaces"
+                                    tabIndex={0}
+                                >
+                                    <table className={styles.workspaceTable} aria-label="My Workspaces">
+                                        <thead>
+                                            <tr>
+                                                <th scope="col" aria-sort={nameSort ?? "none"}>
+                                                    <button
+                                                        type="button"
+                                                        className={styles.workspaceSort}
+                                                        onClick={() => {
+                                                            setNameSort(nameSort === "ascending" ? "descending" : "ascending");
+                                                            setPage(1);
+                                                        }}
+                                                    >
+                                                        Workspace
+                                                        {nameSort === "ascending" ? (
+                                                            <ArrowUp size={14} aria-hidden="true" />
+                                                        ) : (
+                                                            <ArrowDown size={14} aria-hidden="true" />
+                                                        )}
+                                                    </button>
+                                                </th>
+                                                <th scope="col">Your role</th>
+                                                <th scope="col">Created by</th>
+                                                <th scope="col">Status</th>
+                                                <th scope="col" className={styles.workspaceActionCell}>Action</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {visibleWorkspaces.map(({ slug, name, role, createdBy, status }, index) => {
+                                                const gradientId = `${workspaceGradientPrefix}-${index}`;
+                                                const creatorNames = createdBy.trim().split(/\s+/);
+                                                const creatorInitials = (creatorNames[0].charAt(0) + (creatorNames.length > 1 ? creatorNames.at(-1).charAt(0) : "")).toUpperCase();
+                                                const inSetup = status === "SETUP_INCOMPLETE";
+                                                const StatusIcon = inSetup ? Clock : CircleCheck;
+                                                const action = inSetup
+                                                    ? role === "Owner" && "Continue setup"
+                                                    : "Open";
+
+                                                return (
+                                                    <tr key={slug ?? name}>
+                                                        <th scope="row">
+                                                            <span className={styles.workspaceName}>
+                                                                <FolderCode
+                                                                    className={styles.workspaceAvatar}
+                                                                    size={20}
+                                                                    stroke={`url(#${gradientId})`}
+                                                                    strokeWidth={1.75}
+                                                                    aria-hidden="true"
+                                                                >
+                                                                    <defs>
+                                                                        <linearGradient id={gradientId} x1="2" x2="23" y1="0" y2="0" gradientUnits="userSpaceOnUse">
+                                                                            <stop offset="0%" stopColor="var(--color-primary)" />
+                                                                            <stop offset="100%" stopColor="#38bdf8" />
+                                                                        </linearGradient>
+                                                                    </defs>
+                                                                </FolderCode>
+                                                                <span className={styles.workspaceNameText}>{name}</span>
+                                                            </span>
+                                                        </th>
+                                                        <td>{role}</td>
+                                                        <td className={styles.workspaceCreator}>
+                                                            <span className={styles.workspaceCreatorIdentity}>
+                                                                <span className={styles.workspaceCreatorAvatar} aria-hidden="true">{creatorInitials}</span>
+                                                                {createdBy}
+                                                            </span>
+                                                        </td>
+                                                        <td>
+                                                            <span className={styles.workspaceStatus} data-status={status}>
+                                                                <StatusIcon size={14} aria-hidden="true" />
+                                                                {inSetup ? "Setup" : "Active"}
+                                                            </span>
+                                                        </td>
+                                                        <td className={styles.workspaceActionCell}>
+                                                            {action && (
+                                                                <ArrowUpRight
+                                                                    className={styles.workspaceAction}
+                                                                    size={18}
+                                                                    role="img"
+                                                                    aria-label={action}
+                                                                >
+                                                                    <title>{action}</title>
+                                                                </ArrowUpRight>
+                                                            )}
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
+                                        </tbody>
+                                    </table>
+                                </div>
+
+                                {pageCount > 0 && (
+                                    <nav className={styles.workspacePagination} aria-label="Workspace pagination">
                                         <button
                                             type="button"
-                                            className={styles.workspaceSort}
-                                            onClick={() => {
-                                                setNameSort(nameSort === "ascending" ? "descending" : "ascending");
-                                                setPage(1);
-                                            }}
+                                            className={styles.workspacePageButton}
+                                            aria-label="Previous page"
+                                            disabled={currentPage === 1}
+                                            onClick={() => setPage(currentPage - 1)}
                                         >
-                                            Workspace
-                                            {nameSort === "ascending" ? (
-                                                <ArrowUp size={14} aria-hidden="true" />
-                                            ) : (
-                                                <ArrowDown size={14} aria-hidden="true" />
-                                            )}
+                                            <ChevronLeft size={17} aria-hidden="true" />
                                         </button>
-                                    </th>
-                                    <th scope="col">Your role</th>
-                                    <th scope="col">Created by</th>
-                                    <th scope="col">Status</th>
-                                    <th scope="col" className={styles.workspaceActionCell}>Action</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {visibleWorkspaces.map(({ slug, name, role, createdBy, status }, index) => {
-                                    const gradientId = `${workspaceGradientPrefix}-${index}`;
-                                    const creatorNames = createdBy.trim().split(/\s+/);
-                                    const creatorInitials = (creatorNames[0].charAt(0) + (creatorNames.length > 1 ? creatorNames.at(-1).charAt(0) : "")).toUpperCase();
-                                    const inSetup = status === "SETUP_INCOMPLETE";
-                                    const StatusIcon = inSetup ? Clock : CircleCheck;
-                                    const action = inSetup
-                                        ? role === "Owner" && "Continue setup"
-                                        : "Open";
-
-                                    return (
-                                        <tr key={slug ?? name}>
-                                            <th scope="row">
-                                                <span className={styles.workspaceName}>
-                                                    <FolderCode
-                                                        className={styles.workspaceAvatar}
-                                                        size={20}
-                                                        stroke={`url(#${gradientId})`}
-                                                        strokeWidth={1.75}
-                                                        aria-hidden="true"
-                                                    >
-                                                        <defs>
-                                                            <linearGradient id={gradientId} x1="2" x2="23" y1="0" y2="0" gradientUnits="userSpaceOnUse">
-                                                                <stop offset="0%" stopColor="var(--color-primary)" />
-                                                                <stop offset="100%" stopColor="#38bdf8" />
-                                                            </linearGradient>
-                                                        </defs>
-                                                    </FolderCode>
-                                                    <span className={styles.workspaceNameText}>{name}</span>
-                                                </span>
-                                            </th>
-                                            <td>{role}</td>
-                                            <td className={styles.workspaceCreator}>
-                                                <span className={styles.workspaceCreatorIdentity}>
-                                                    <span className={styles.workspaceCreatorAvatar} aria-hidden="true">{creatorInitials}</span>
-                                                    {createdBy}
-                                                </span>
-                                            </td>
-                                            <td>
-                                                <span className={styles.workspaceStatus} data-status={status}>
-                                                    <StatusIcon size={14} aria-hidden="true" />
-                                                    {inSetup ? "Setup" : "Active"}
-                                                </span>
-                                            </td>
-                                            <td className={styles.workspaceActionCell}>
-                                                {action && (
-                                                    <ArrowUpRight
-                                                        className={styles.workspaceAction}
-                                                        size={18}
-                                                        role="img"
-                                                        aria-label={action}
-                                                    >
-                                                        <title>{action}</title>
-                                                    </ArrowUpRight>
-                                                )}
-                                            </td>
-                                        </tr>
-                                    );
-                                })}
-                                {visibleWorkspaces.length === 0 && (
-                                    <tr>
-                                        <td colSpan={5} className={styles.workspaceEmptyCell}>
-                                            <span role="status">
-                                                {workspaces.length === 0
-                                                    ? "You don’t have any workspaces yet."
-                                                    : "No matching workspaces found."}
-                                            </span>
-                                        </td>
-                                    </tr>
+                                        <span className={styles.workspaceCurrentPage} aria-live="polite" aria-current="page">
+                                            {currentPage}
+                                        </span>
+                                        <button
+                                            type="button"
+                                            className={styles.workspacePageButton}
+                                            aria-label="Next page"
+                                            disabled={currentPage === pageCount}
+                                            onClick={() => setPage(currentPage + 1)}
+                                        >
+                                            <ChevronRight size={17} aria-hidden="true" />
+                                        </button>
+                                    </nav>
                                 )}
-                            </tbody>
-                        </table>
-                    </div>
-
-                    {pageCount > 0 && (
-                        <nav className={styles.workspacePagination} aria-label="Workspace pagination">
-                            <button
-                                type="button"
-                                className={styles.workspacePageButton}
-                                aria-label="Previous page"
-                                disabled={currentPage === 1}
-                                onClick={() => setPage(currentPage - 1)}
-                            >
-                                <ChevronLeft size={17} aria-hidden="true" />
-                            </button>
-                            <span className={styles.workspaceCurrentPage} aria-live="polite" aria-current="page">
-                                {currentPage}
-                            </span>
-                            <button
-                                type="button"
-                                className={styles.workspacePageButton}
-                                aria-label="Next page"
-                                disabled={currentPage === pageCount}
-                                onClick={() => setPage(currentPage + 1)}
-                            >
-                                <ChevronRight size={17} aria-hidden="true" />
-                            </button>
-                        </nav>
-                    )}
+                            </>
+                        );
+                    })()}
                 </div>
 
                 <section id="invitations" className={styles.invitesContent} aria-labelledby="workspace-invitations-title">
@@ -392,14 +450,34 @@ export default function WorkspaceHomeContent({ workspaces = sampleWorkspaces, pe
                     </div>
 
                     <div className={styles.inviteList}>
-                        {matchingInvites.length === 0 && (
-                            <div className={styles.emptyInvites}>
-                                <Inbox size={28} strokeWidth={1.5} aria-hidden="true" />
-                                <h3 role="status">{selectedInviteFilter.emptyMessage}</h3>
-                                {pendingInvitations.length === 0 && <p>New workspace invitations will appear here.</p>}
-                            </div>
-                        )}
-                        {visibleInvites.map(({ id, workspace, inviter, expiresAt }) => {
+                        {invitationsLoading ? (
+                            <LoadingState variant="list" label="Loading invitations…" count={2} />
+                        ) : invitationsError ? (
+                            <ErrorState
+                                compact
+                                headingLevel="h3"
+                                title={formatUiError(invitationsError).title}
+                                message={formatUiError(invitationsError, "Unable to load invitations.").message}
+                                code={formatUiError(invitationsError).code}
+                                onRetry={onRetryInvitations}
+                                retryLabel="Retry"
+                            />
+                        ) : matchingInvites.length === 0 ? (
+                            <EmptyState
+                                compact
+                                headingLevel="h3"
+                                className={styles.inviteStatePanel}
+                                icon={Inbox}
+                                title={selectedInviteFilter.emptyMessage}
+                                description={
+                                    pendingInvitations.length === 0
+                                        ? "New workspace invitations will appear here."
+                                        : undefined
+                                }
+                            />
+                        ) : (
+                            <>
+                                {visibleInvites.map(({ id, workspace, inviter, expiresAt }) => {
                             const gradientId = `${invitationGradientPrefix}-${id}`;
                             const response = invitationResponses[id];
 
@@ -496,12 +574,18 @@ export default function WorkspaceHomeContent({ workspaces = sampleWorkspaces, pe
                                 >
                                     <ChevronRight size={17} aria-hidden="true" />
                                 </button>
-                            </nav>
-                        )}
+                                            </nav>
+                                    )}
+                                </>
+                            )}
                     </div>
                 </section>
 
-                <WorkspaceNotifications />
+                <WorkspaceNotifications
+                    loading={notificationsLoading}
+                    error={notificationsError}
+                    onRetry={onRetryNotifications}
+                />
             </div>
         </section>
     );

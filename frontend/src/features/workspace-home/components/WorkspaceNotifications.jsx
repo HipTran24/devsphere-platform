@@ -1,7 +1,11 @@
 "use client";
 
-import { AlertCircle, Bell, Check, ClipboardList, GitPullRequest } from "lucide-react";
+import { AlertCircle, Bell, Check, CheckCheck, ClipboardList, GitPullRequest } from "lucide-react";
 import { useState } from "react";
+import LoadingState from "../../../components/ui/LoadingState";
+import ErrorState from "../../../components/ui/ErrorState";
+import EmptyState from "../../../components/ui/EmptyState";
+import { formatUiError } from "../../../components/ui/uiStateHelpers";
 import styles from "../styles/WorkspaceHomeContent.module.css";
 
 const notificationGroups = [
@@ -89,11 +93,17 @@ const notificationGroups = [
     },
 ];
 
-export default function WorkspaceNotifications() {
+export default function WorkspaceNotifications({
+    groups: initialGroups = notificationGroups,
+    loading = false,
+    error = null,
+    onRetry,
+}) {
     const [unreadOnly, setUnreadOnly] = useState(false);
     const [readIds, setReadIds] = useState([]);
+    const [statusAnnouncement, setStatusAnnouncement] = useState("");
 
-    const groups = notificationGroups.map(({ label, visibleRows, items }) => ({
+    const groups = initialGroups.map(({ label, visibleRows, items }) => ({
         label,
         visibleRows,
         items: items.map((item) => ({
@@ -102,10 +112,8 @@ export default function WorkspaceNotifications() {
         })),
     }));
 
-    const unreadCount = groups.reduce(
-        (total, { items }) => total + items.filter(({ unread }) => unread).length,
-        0
-    );
+    const unreadItems = groups.flatMap(({ items }) => items.filter(({ unread }) => unread));
+    const unreadCount = unreadItems.length;
     const visibleGroups = groups
         .map(({ label, visibleRows, items }) => ({
             label,
@@ -114,22 +122,71 @@ export default function WorkspaceNotifications() {
         }))
         .filter(({ items }) => items.length > 0);
 
+    function markItemAsRead(id, title) {
+        setReadIds((previous) => (previous.includes(id) ? previous : [...previous, id]));
+        setStatusAnnouncement(`Marked ${title} as read.`);
+    }
+
+    function markAllAsRead() {
+        if (unreadCount === 0) return;
+        const idsToMark = unreadItems.map(({ id }) => id);
+        setReadIds((previous) => Array.from(new Set([...previous, ...idsToMark])));
+        setStatusAnnouncement("All notifications marked as read.");
+    }
+
     return (
         <section id="notifications" className={styles.notificationsContent} aria-label="Notifications">
-            <div className={styles.notificationFilters} role="group" aria-label="Filter notifications">
-                <button type="button" aria-pressed={!unreadOnly} onClick={() => setUnreadOnly(false)}>
-                    All
-                </button>
-                <button type="button" aria-pressed={unreadOnly} onClick={() => setUnreadOnly(true)}>
-                    Unread · {unreadCount}
-                </button>
+            <div className={styles.notificationHeader}>
+                <div className={styles.notificationFilters} role="group" aria-label="Filter notifications">
+                    <button type="button" aria-pressed={!unreadOnly} onClick={() => setUnreadOnly(false)}>
+                        All
+                    </button>
+                    <button type="button" aria-pressed={unreadOnly} onClick={() => setUnreadOnly(true)}>
+                        Unread · {unreadCount}
+                    </button>
+                </div>
+
+                {!loading && !error && (
+                    <button
+                        type="button"
+                        className={styles.markAllReadButton}
+                        disabled={unreadCount === 0}
+                        onClick={markAllAsRead}
+                    >
+                        <CheckCheck size={15} aria-hidden="true" />
+                        <span>Mark all as read</span>
+                    </button>
+                )}
             </div>
 
-            {visibleGroups.length === 0 ? (
-                <div className={styles.emptyNotifications} role="status">
-                    <Bell size={24} aria-hidden="true" />
-                    <p>{unreadOnly ? "You’re all caught up." : "No notifications yet."}</p>
-                </div>
+            <div className={styles.creationAnnouncement} role="status" aria-live="polite" aria-atomic="true">
+                {statusAnnouncement}
+            </div>
+
+            {loading ? (
+                <LoadingState variant="list" label="Loading notifications…" count={3} />
+            ) : error ? (
+                <ErrorState
+                    compact
+                    title={formatUiError(error).title}
+                    message={formatUiError(error, "Unable to load notifications.").message}
+                    code={formatUiError(error).code}
+                    onRetry={onRetry}
+                    retryLabel="Retry"
+                />
+            ) : visibleGroups.length === 0 ? (
+                <EmptyState
+                    compact
+                    icon={Bell}
+                    title={unreadOnly ? "You’re all caught up." : "No notifications yet."}
+                    description={
+                        unreadOnly
+                            ? "All unread notifications have been reviewed."
+                            : "Workspace updates and activity alerts will appear here."
+                    }
+                    actionLabel={unreadOnly ? "Show all notifications" : undefined}
+                    onAction={unreadOnly ? () => setUnreadOnly(false) : undefined}
+                />
             ) : (
                 visibleGroups.map(({ label, visibleRows, items }) => (
                     <div className={styles.notificationGroup} key={label}>
@@ -163,7 +220,7 @@ export default function WorkspaceNotifications() {
                                                     type="button"
                                                     aria-label={`Mark as read: ${title}`}
                                                     title="Mark as read"
-                                                    onClick={() => setReadIds((previous) => [...previous, id])}
+                                                    onClick={() => markItemAsRead(id, title)}
                                                 >
                                                     <Check size={16} aria-hidden="true" />
                                                 </button>
@@ -179,4 +236,3 @@ export default function WorkspaceNotifications() {
         </section>
     );
 }
-
