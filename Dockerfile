@@ -31,7 +31,7 @@ WORKDIR /app
 COPY --from=build --chown=devsphere:devsphere /workspace/app.jar /app/app.jar
 
 ENV SPRING_PROFILES_ACTIVE=prod \
-    JAVA_OPTS="-XX:MaxRAMPercentage=75 -XX:+ExitOnOutOfMemoryError"
+    JAVA_OPTS="-XX:MaxRAMPercentage=75 -XX:+ExitOnOutOfMemoryError -Dmanagement.metrics.distribution.percentiles-histogram.http.server.requests=true"
 
 USER devsphere:devsphere
 EXPOSE 8080 8081

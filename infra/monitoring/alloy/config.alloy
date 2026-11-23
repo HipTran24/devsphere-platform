@@ -1,0 +1,54 @@
+// Ships Docker container logs to Loki without needing the Docker socket.
+// The json-file logging driver (compose.prod.yaml) records the compose service
+// name in `attrs`, which becomes the `service` label.
+
+local.file_match "containers" {
+  path_targets = [{
+    __path__ = "/var/lib/docker/containers/*/*-json.log",
+    job      = "docker",
+  }]
+}
+
+loki.source.file "containers" {
+  targets    = local.file_match.containers.targets
+  forward_to = [loki.process.containers.receiver]
+}
+
+loki.process "containers" {
+  stage.json {
+    expressions = {
+      log    = "log",
+      stream = "stream",
+      attrs  = "attrs",
+    }
+  }
+
+  stage.json {
+    source      = "attrs"
+    expressions = {
+      service = "\"com.docker.compose.service\"",
+    }
+  }
+
+  stage.labels {
+    values = {
+      service = "",
+      stream  = "",
+    }
+  }
+
+  stage.output {
+    source = "log"
+  }
+
+  forward_to = [loki.write.default.receiver]
+}
+
+loki.write "default" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+  external_labels = {
+    environment = "production",
+  }
+}
