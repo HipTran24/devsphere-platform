@@ -4,6 +4,7 @@ import com.project.devsphere.operations.application.ClaimedJob;
 import com.project.devsphere.operations.application.JobHandler;
 import com.project.devsphere.operations.application.JobResult;
 import com.project.devsphere.operations.domain.BackgroundJob;
+import com.project.devsphere.operations.infrastructure.metrics.OperationsMetrics;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -38,6 +39,7 @@ public class BackupCheckJobHandler implements JobHandler {
     private final String backupDirectory;
     private final Duration maxBackupAge;
     private final Clock clock;
+    private OperationsMetrics metrics;
 
     @Autowired
     public BackupCheckJobHandler(
@@ -55,6 +57,12 @@ public class BackupCheckJobHandler implements JobHandler {
         this.backupDirectory = backupDirectory == null ? "" : backupDirectory.strip();
         this.maxBackupAge = maxBackupAge;
         this.clock = clock;
+    }
+
+    /** Optional telemetry publishing devsphere_backup_last_success_timestamp_seconds. */
+    @Autowired(required = false)
+    public void setOperationsMetrics(OperationsMetrics metrics) {
+        this.metrics = metrics;
     }
 
     @Override
@@ -87,8 +95,12 @@ public class BackupCheckJobHandler implements JobHandler {
             details.put("latestBackupAt", newest.toString());
             details.put("latestBackupAgeSeconds", age.toSeconds());
         }
-        details.put("checkedAt", clock.instant().toString());
+        Instant checkedAt = clock.instant();
+        details.put("checkedAt", checkedAt.toString());
         details.put("outcome", "HEALTHY");
+        if (metrics != null) {
+            metrics.recordBackupSuccess(checkedAt);
+        }
         return JobResult.of(details);
     }
 
