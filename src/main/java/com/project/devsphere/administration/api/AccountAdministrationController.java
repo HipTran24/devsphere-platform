@@ -98,6 +98,10 @@ public class AccountAdministrationController {
             @RequestParam(required = false) String entityType,
             @RequestParam(required = false) String from,
             @RequestParam(required = false) String to,
+            @RequestParam(required = false) UUID workspaceId,
+            @RequestParam(required = false) UUID projectId,
+            @RequestParam(required = false) UUID entityId,
+            @RequestParam(required = false) String traceId,
             @RequestParam(defaultValue = "occurredAt,desc") String sort) {
 
         accessPolicy.requireSystemAdmin(principal);
@@ -106,7 +110,10 @@ public class AccountAdministrationController {
         Instant toInstant = parseInstant(to, "to");
 
         AdminPageResponse<AdminAuditLogResponse> response = accountAdministrationService.getAuditLogs(
-                page, size, actorId, action, entityType, fromInstant, toInstant, sort
+                page, size,
+                new AccountAdministrationService.AuditLogFilter(
+                        actorId, action, entityType, workspaceId, projectId, entityId, traceId, fromInstant, toInstant),
+                sort
         );
 
         return ResponseEntity.ok()

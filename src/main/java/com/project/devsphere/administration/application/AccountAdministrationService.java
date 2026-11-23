@@ -45,6 +45,8 @@ public class AccountAdministrationService {
             "version"
     );
 
+    private static final java.util.regex.Pattern TRACE_ID_PATTERN = java.util.regex.Pattern.compile("^[a-zA-Z0-9._-]{1,64}$");
+
     private final JdbcTemplate jdbcTemplate;
     private final TransactionTemplate transactionTemplate;
     private final ObjectMapper objectMapper;
@@ -314,6 +316,14 @@ public class AccountAdministrationService {
             Instant from,
             Instant to,
             String sort) {
+        return getAuditLogs(page, size, AuditLogFilter.of(actorId, action, entityType, from, to), sort);
+    }
+
+    public AdminPageResponse<AdminAuditLogResponse> getAuditLogs(
+            int page,
+            int size,
+            AuditLogFilter filter,
+            String sort) {
 
         if (page < 0 || page > 10000) {
             throw AdminException.validationFailed("Page index out of bounds (0..10000)");
@@ -322,8 +332,65 @@ public class AccountAdministrationService {
             throw AdminException.validationFailed("Page size out of bounds (1..100)");
         }
 
-        Instant effectiveTo = to;
-        Instant effectiveFrom = from;
+        AuditWhere where = buildAuditWhere(filter);
+        String whereSql = where.sql();
+        List<Object> params = where.params();
+        Instant effectiveFrom = where.effectiveFrom();
+        Instant effectiveTo = where.effectiveTo();
+        String orderSql = parseAndValidateSort(sort, AUDIT_SORT_FIELDS, "occurred_at DESC") + ", id ASC";
+
+        String countSql = "SELECT count(*) FROM audit_logs" + whereSql;
+        Long totalElementsObj = jdbcTemplate.queryForObject(countSql, Long.class, params.toArray());
+        long totalElements = totalElementsObj != null ? totalElementsObj : 0L;
+        int totalPages = totalElements == 0 ? 0 : (int) Math.ceil((double) totalElements / size);
+
+        String selectSql = "SELECT id, workspace_id, project_id, actor_id, action, entity_type, entity_id, " +
+                "before_json, after_json, occurred_at, trace_id FROM audit_logs" +
+                whereSql + " " + orderSql + " LIMIT ? OFFSET ?";
+
+        List<Object> queryParams = new ArrayList<>(params);
+        queryParams.add(size);
+        queryParams.add(page * size);
+
+        List<AdminAuditLogResponse> logs = jdbcTemplate.query(
+                selectSql,
+                (rs, rowNum) -> mapToAdminAuditLogResponse(rs),
+                queryParams.toArray()
+        );
+
+        return new AdminPageResponse<>(logs, page, size, totalElements, totalPages, effectiveFrom, effectiveTo);
+    }
+
+    /**
+     * Optional audit search criteria. {@code from}/{@code to} must be supplied together (max 31 days);
+     * when both are omitted the last 30 days are searched.
+     */
+    public record AuditLogFilter(
+            UUID actorId,
+            String action,
+            String entityType,
+            UUID workspaceId,
+            UUID projectId,
+            UUID entityId,
+            String traceId,
+            Instant from,
+            Instant to) {
+
+        public static AuditLogFilter of(UUID actorId, String action, String entityType, Instant from, Instant to) {
+            return new AuditLogFilter(actorId, action, entityType, null, null, null, null, from, to);
+        }
+
+        public static AuditLogFilter range(Instant from, Instant to) {
+            return new AuditLogFilter(null, null, null, null, null, null, null, from, to);
+        }
+    }
+
+    private record AuditWhere(String sql, List<Object> params, Instant effectiveFrom, Instant effectiveTo) {}
+
+    private AuditWhere buildAuditWhere(AuditLogFilter filter) {
+        AuditLogFilter criteria = filter != null ? filter : AuditLogFilter.range(null, null);
+        Instant effectiveTo = criteria.to();
+        Instant effectiveFrom = criteria.from();
 
         if (effectiveFrom == null && effectiveTo == null) {
             effectiveTo = databaseNow();
@@ -347,44 +414,46 @@ public class AccountAdministrationService {
         params.add(effectiveFrom.atOffset(ZoneOffset.UTC));
         params.add(effectiveTo.atOffset(ZoneOffset.UTC));
 
-        if (actorId != null) {
+        if (criteria.actorId() != null) {
             whereClauses.add("actor_id = ?");
-            params.add(actorId);
+            params.add(criteria.actorId());
         }
 
-        if (action != null && !action.isBlank()) {
+        if (criteria.action() != null && !criteria.action().isBlank()) {
             whereClauses.add("action = ?");
-            params.add(action.strip());
+            params.add(criteria.action().strip());
         }
 
-        if (entityType != null && !entityType.isBlank()) {
+        if (criteria.entityType() != null && !criteria.entityType().isBlank()) {
             whereClauses.add("entity_type = ?");
-            params.add(entityType.strip());
+            params.add(criteria.entityType().strip());
         }
 
-        String whereSql = " WHERE " + String.join(" AND ", whereClauses);
-        String orderSql = parseAndValidateSort(sort, AUDIT_SORT_FIELDS, "occurred_at DESC") + ", id ASC";
+        if (criteria.workspaceId() != null) {
+            whereClauses.add("workspace_id = ?");
+            params.add(criteria.workspaceId());
+        }
 
-        String countSql = "SELECT count(*) FROM audit_logs" + whereSql;
-        Long totalElementsObj = jdbcTemplate.queryForObject(countSql, Long.class, params.toArray());
-        long totalElements = totalElementsObj != null ? totalElementsObj : 0L;
-        int totalPages = totalElements == 0 ? 0 : (int) Math.ceil((double) totalElements / size);
+        if (criteria.projectId() != null) {
+            whereClauses.add("project_id = ?");
+            params.add(criteria.projectId());
+        }
 
-        String selectSql = "SELECT id, workspace_id, project_id, actor_id, action, entity_type, entity_id, " +
-                "before_json, after_json, occurred_at, trace_id FROM audit_logs" +
-                whereSql + " " + orderSql + " LIMIT ? OFFSET ?";
+        if (criteria.entityId() != null) {
+            whereClauses.add("entity_id = ?");
+            params.add(criteria.entityId());
+        }
 
-        List<Object> queryParams = new ArrayList<>(params);
-        queryParams.add(size);
-        queryParams.add(page * size);
+        if (criteria.traceId() != null && !criteria.traceId().isBlank()) {
+            String traceId = criteria.traceId().strip();
+            if (!TRACE_ID_PATTERN.matcher(traceId).matches()) {
+                throw AdminException.validationFailed("traceId must match ^[a-zA-Z0-9._-]{1,64}$");
+            }
+            whereClauses.add("trace_id = ?");
+            params.add(traceId);
+        }
 
-        List<AdminAuditLogResponse> logs = jdbcTemplate.query(
-                selectSql,
-                (rs, rowNum) -> mapToAdminAuditLogResponse(rs),
-                queryParams.toArray()
-        );
-
-        return new AdminPageResponse<>(logs, page, size, totalElements, totalPages, effectiveFrom, effectiveTo);
+        return new AuditWhere(" WHERE " + String.join(" AND ", whereClauses), params, effectiveFrom, effectiveTo);
     }
 
     private String parseAndValidateSort(String sort, Map<String, String> allowedFields, String defaultOrder) {
