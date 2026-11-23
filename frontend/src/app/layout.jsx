@@ -1,6 +1,8 @@
 import { Plus_Jakarta_Sans } from "next/font/google";
 import "../styles/main.css";
 import AuthProvider from "../features/auth/components/AuthProvider";
+import SkipLink from "../components/ui/SkipLink";
+import AppErrorBoundary from "../components/ui/AppErrorBoundary";
 
 const plusJakartaSans = Plus_Jakarta_Sans({
     subsets: ["latin", "vietnamese"],
@@ -16,7 +18,12 @@ export const metadata = {
 export default function RootLayout({ children }) {
     return (
         <html lang="en" className={plusJakartaSans.variable}>
-            <body><AuthProvider>{children}</AuthProvider></body>
+            <body>
+                <SkipLink />
+                <AuthProvider>
+                    <AppErrorBoundary>{children}</AppErrorBoundary>
+                </AuthProvider>
+            </body>
         </html>
     );
 }
