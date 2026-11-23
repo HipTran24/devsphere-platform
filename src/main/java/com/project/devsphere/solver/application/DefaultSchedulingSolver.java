@@ -6,6 +6,8 @@ import com.project.devsphere.resource.api.WeeklySlot;
 import com.project.devsphere.solver.domain.SolverInputSnapshot;
 import com.project.devsphere.solver.domain.SolverResult;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import com.project.devsphere.operations.infrastructure.metrics.OperationsMetrics;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.time.DayOfWeek;
@@ -27,8 +29,30 @@ import java.util.UUID;
 @ConditionalOnMissingBean(name = "cpSatSchedulingSolver")
 public class DefaultSchedulingSolver implements SchedulingSolver {
 
+    private OperationsMetrics metrics;
+
+    /** Optional telemetry recording devsphere_solver_duration_seconds{solver,status}. */
+    @Autowired(required = false)
+    public void setOperationsMetrics(OperationsMetrics metrics) {
+        this.metrics = metrics;
+    }
+
     @Override
     public SolverResult solve(SolverInputSnapshot snapshot) {
+        long started = System.nanoTime();
+        SolverResult result = null;
+        try {
+            result = solveSnapshot(snapshot);
+            return result;
+        } finally {
+            if (metrics != null) {
+                String status = result == null || result.status() == null ? "ERROR" : result.status().name();
+                metrics.recordSolverRun("greedy", status, System.nanoTime() - started);
+            }
+        }
+    }
+
+    private SolverResult solveSnapshot(SolverInputSnapshot snapshot) {
         if (snapshot == null) {
             return SolverResult.error("Snapshot must not be null");
         }
