@@ -5,6 +5,10 @@ import com.project.devsphere.identity.application.SessionService;
 import com.project.devsphere.notification.api.dto.NotificationResponse;
 import com.project.devsphere.notification.domain.Notification;
 import com.project.devsphere.notification.infrastructure.persistence.NotificationRepository;
+import com.project.devsphere.operations.application.OutboxService;
+import com.project.devsphere.operations.domain.BackgroundJob;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -13,6 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
@@ -23,12 +28,26 @@ public class NotificationService {
 
     private final NotificationRepository notificationRepository;
     private final AccessPolicy accessPolicy;
+    private final ObjectProvider<OutboxService> outboxService;
 
     public NotificationService(
             NotificationRepository notificationRepository,
             AccessPolicy accessPolicy) {
+        this(notificationRepository, accessPolicy, null);
+    }
+
+    /**
+     * @param outboxService optional outbox used to queue e-mail delivery for notifications created
+     *                      with {@link Notification.EmailStatus#PENDING}; may be {@code null}.
+     */
+    @Autowired
+    public NotificationService(
+            NotificationRepository notificationRepository,
+            AccessPolicy accessPolicy,
+            ObjectProvider<OutboxService> outboxService) {
         this.notificationRepository = Objects.requireNonNull(notificationRepository, "notificationRepository must not be null");
         this.accessPolicy = Objects.requireNonNull(accessPolicy, "accessPolicy must not be null");
+        this.outboxService = outboxService;
     }
 
     public Notification createNotification(
@@ -89,11 +108,34 @@ public class NotificationService {
         notification.setVersion(0L);
 
         try {
-            return notificationRepository.save(notification);
+            Notification saved = notificationRepository.save(notification);
+            if (saved != null && saved.getEmailStatus() == Notification.EmailStatus.PENDING) {
+                enqueueEmail(saved);
+            }
+            return saved;
         } catch (DataIntegrityViolationException ex) {
             return notificationRepository.findByUserIdAndEventKey(userId, eventKey)
                     .orElseThrow(() -> ex);
         }
+    }
+
+    /**
+     * Queues the e-mail copy in the same transaction as the notification (transactional outbox),
+     * keyed by the notification id so retries never duplicate delivery.
+     */
+    private void enqueueEmail(Notification saved) {
+        OutboxService outbox = outboxService == null ? null : outboxService.getIfAvailable();
+        if (outbox == null || saved.getId() == null) {
+            return;
+        }
+        outbox.enqueueJob(new OutboxService.EnqueueRequest(
+                BackgroundJob.JobKind.NOTIFICATION_EMAIL,
+                saved.getWorkspaceId(),
+                saved.getProjectId(),
+                null,
+                OutboxService.idempotencyKey("notification-email", saved.getId().toString()),
+                Map.of("notificationId", saved.getId().toString(), "eventType", saved.getEventType()),
+                null));
     }
 
     @Transactional(readOnly = true)

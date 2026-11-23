@@ -45,6 +45,8 @@ public class SessionSecurityConfiguration {
     private static final RequestMatcher CURRENT_USER = ROUTES.matcher(HttpMethod.GET, "/api/v1/auth/me");
     private static final RequestMatcher ADMIN_ENDPOINTS = ROUTES.matcher("/api/v1/admin/**");
     private static final RequestMatcher ADMIN_PATCH_ENDPOINTS = ROUTES.matcher(HttpMethod.PATCH, "/api/v1/admin/**");
+    private static final RequestMatcher ADMIN_POST_ENDPOINTS = ROUTES.matcher(HttpMethod.POST, "/api/v1/admin/**");
+    private static final RequestMatcher OPERATIONS_ADMIN_ENDPOINTS = ROUTES.matcher("/api/v1/admin/operations/**");
     private static final RequestMatcher WORKSPACE_ENDPOINTS = ROUTES.matcher("/api/v1/workspaces/**");
     private static final RequestMatcher WORKSPACE_POST_ENDPOINTS = ROUTES.matcher(HttpMethod.POST, "/api/v1/workspaces/**");
     private static final RequestMatcher WORKSPACE_PUT_ENDPOINTS = ROUTES.matcher(HttpMethod.PUT, "/api/v1/workspaces/**");
@@ -79,6 +81,7 @@ public class SessionSecurityConfiguration {
                 .ignoringRequestMatchers(
                     REVOKE_SESSION,
                     ADMIN_PATCH_ENDPOINTS,
+                    ADMIN_POST_ENDPOINTS,
                     WORKSPACE_POST_ENDPOINTS,
                     WORKSPACE_PUT_ENDPOINTS,
                     WORKSPACE_PATCH_ENDPOINTS,
@@ -120,6 +123,7 @@ public class SessionSecurityConfiguration {
                 .requestMatchers(HttpMethod.POST, "/api/v1/auth/refresh").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/v1/auth/logout").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/v1/auth/csrf").permitAll()
+                .requestMatchers(OPERATIONS_ADMIN_ENDPOINTS).hasRole("ADMIN")
                 .requestMatchers(ADMIN_ENDPOINTS).hasRole("ADMIN")
                 .requestMatchers(BEARER_ENDPOINTS).authenticated()
                 .requestMatchers("/api/**").denyAll()
