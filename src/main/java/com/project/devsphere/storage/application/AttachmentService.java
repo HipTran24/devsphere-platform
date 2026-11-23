@@ -141,8 +141,11 @@ public class AttachmentService {
             throw StorageException.validationFailed("Attachment cannot have CLIENT_SHARED visibility while scan status is PENDING");
         }
 
+        String sanitizedFilename = command.filename() != null
+                ? command.filename().replaceAll("[^a-zA-Z0-9._-]", "_")
+                : "attachment";
         String storageKey = String.format("workspaces/%s/projects/%s/attachments/%s/%s",
-                workspaceId, projectId, UUID.randomUUID(), command.filename());
+                workspaceId, projectId, UUID.randomUUID(), sanitizedFilename);
 
         Attachment attachment = new Attachment();
         attachment.setWorkspaceId(workspaceId);
@@ -245,6 +248,20 @@ public class AttachmentService {
             if (attachment.getVisibility() == Attachment.Visibility.CLIENT_SHARED &&
                     attachment.getScanStatus() != Attachment.ScanStatus.CLEAN) {
                 throw StorageException.attachmentNotClean("Attachment security scan is not CLEAN");
+            }
+        }
+
+        if (attachment.getChatMessageId() != null) {
+            Boolean isMember = jdbcTemplate.queryForObject(
+                    "SELECT EXISTS(SELECT 1 FROM chat_messages m " +
+                            "JOIN chat_channel_members cm ON cm.channel_id = m.channel_id " +
+                            "WHERE m.id = ? AND cm.user_id = ?)",
+                    Boolean.class,
+                    attachment.getChatMessageId(),
+                    principal.userId()
+            );
+            if (!Boolean.TRUE.equals(isMember)) {
+                throw StorageException.accessDenied("User is not a member of the chat channel for this attachment");
             }
         }
 

@@ -107,6 +107,10 @@ public class WorkItemService {
 
         UUID id = UUID.randomUUID();
 
+        if (request.sprintId() != null) {
+            validateSprintNotClosed(projectId, request.sprintId());
+        }
+
         // Calculate next backlog rank
         BigDecimal rank = jdbcTemplate.queryForObject(
                 "SELECT COALESCE(MAX(backlog_rank), 0) + 1 FROM work_items WHERE project_id = ? AND deleted_at IS NULL",
@@ -310,6 +314,7 @@ public class WorkItemService {
             params.add(request.parentId());
         }
         if (request.sprintId() != null) {
+            validateSprintNotClosed(projectId, request.sprintId());
             sql.append(", sprint_id = ?");
             params.add(request.sprintId());
         }
@@ -686,9 +691,24 @@ public class WorkItemService {
         return items.get(0);
     }
 
+    private void validateSprintNotClosed(UUID projectId, UUID sprintId) {
+        if (sprintId == null) return;
+        List<String> statuses = jdbcTemplate.query(
+                "SELECT status FROM sprints WHERE id = ? AND project_id = ?",
+                (rs, rowNum) -> rs.getString("status"),
+                sprintId, projectId
+        );
+        if (!statuses.isEmpty() && "CLOSED".equalsIgnoreCase(statuses.get(0))) {
+            throw WorkspaceProjectException.validationFailed("Cannot assign work item to a CLOSED sprint");
+        }
+    }
+
     private void setActorContext(UUID actorId) {
         if (actorId != null) {
-            jdbcTemplate.execute("SELECT set_config('devsphere.actor_id', '" + actorId + "', true)");
+            try {
+                jdbcTemplate.queryForObject("SELECT set_config('devsphere.actor_id', ?, true)", String.class, actorId.toString());
+            } catch (Exception ignored) {
+            }
         }
     }
 

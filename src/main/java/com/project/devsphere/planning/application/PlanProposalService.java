@@ -168,6 +168,12 @@ public class PlanProposalService {
         ZoneId zone = ZoneId.of(timezoneStr);
         LocalDate horizonStart = request.horizonStart() != null ? request.horizonStart() : LocalDate.now(zone);
         LocalDate horizonEnd = request.horizonEnd() != null ? request.horizonEnd() : horizonStart.plusDays(90);
+        if (horizonEnd.isBefore(horizonStart)) {
+            throw PlanProposalException.validationFailed("horizonEnd must not be before horizonStart");
+        }
+        if (java.time.temporal.ChronoUnit.DAYS.between(horizonStart, horizonEnd) > 365) {
+            throw PlanProposalException.validationFailed("Planning horizon window cannot exceed 365 days");
+        }
 
         int maxTimeSeconds = (request.solverLimitSeconds() != null && request.solverLimitSeconds() > 0)
                 ? Math.min(30, request.solverLimitSeconds())
@@ -1045,6 +1051,31 @@ public class PlanProposalService {
             }
         }
 
+        List<SolverInputSnapshot.FrozenScheduleEntry> frozenEntries = new ArrayList<>();
+        try {
+            List<Map<String, Object>> frozenRows = jdbcTemplate.queryForList(
+                    "SELECT se.work_item_id, se.assignee_id, se.start_at, se.finish_at, se.remaining_minutes_snapshot " +
+                            "FROM schedule_entries se " +
+                            "JOIN projects p ON p.active_schedule_version_id = se.schedule_version_id " +
+                            "WHERE p.id = ? AND se.frozen = true",
+                    projectId
+            );
+            for (Map<String, Object> row : frozenRows) {
+                Object startObj = row.get("start_at");
+                Object finishObj = row.get("finish_at");
+                Instant startInst = startObj instanceof java.sql.Timestamp ts ? ts.toInstant() : (startObj instanceof Instant ins ? ins : Instant.now());
+                Instant finishInst = finishObj instanceof java.sql.Timestamp ts ? ts.toInstant() : (finishObj instanceof Instant ins ? ins : Instant.now());
+                frozenEntries.add(new SolverInputSnapshot.FrozenScheduleEntry(
+                        (UUID) row.get("work_item_id"),
+                        (UUID) row.get("assignee_id"),
+                        startInst,
+                        finishInst,
+                        row.get("remaining_minutes_snapshot") != null ? ((Number) row.get("remaining_minutes_snapshot")).intValue() : 0
+                ));
+            }
+        } catch (Exception ignored) {
+        }
+
         return new SolverInputSnapshot(
                 projectId,
                 workspaceId,
@@ -1058,7 +1089,7 @@ public class PlanProposalService {
                 tasks,
                 dependencies,
                 capacitySnapshot != null ? capacitySnapshot.developers() : List.of(),
-                List.of()
+                frozenEntries
         );
     }
 
@@ -1113,7 +1144,7 @@ public class PlanProposalService {
     private void setActorId(SessionService.Principal principal) {
         if (principal != null && principal.userId() != null) {
             try {
-                jdbcTemplate.execute("SELECT set_config('devsphere.actor_id', '" + principal.userId() + "', true)");
+                jdbcTemplate.queryForObject("SELECT set_config('devsphere.actor_id', ?, true)", String.class, principal.userId().toString());
             } catch (Exception ignored) {
             }
         }

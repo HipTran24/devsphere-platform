@@ -229,7 +229,9 @@ public class RescheduleTriggerService {
 
         // Run CP-SAT solver
         LocalDate horizonStart = plannedStart;
-        LocalDate horizonEnd = committedDeadline != null ? committedDeadline.plusDays(60) : plannedStart.plusDays(180);
+        LocalDate horizonEnd = (committedDeadline != null && committedDeadline.isAfter(plannedStart))
+                ? committedDeadline.plusDays(60)
+                : plannedStart.plusDays(180);
 
         ResourceCapacitySnapshot capacitySnapshot = capacitySnapshotReader.read(projectId, horizonStart, horizonEnd);
         SolverInputSnapshot solverInput = buildSolverInputSnapshot(

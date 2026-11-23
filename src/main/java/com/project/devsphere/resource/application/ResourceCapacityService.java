@@ -465,7 +465,7 @@ public class ResourceCapacityService {
     private void setActorId(SessionService.Principal principal) {
         if (principal != null && principal.userId() != null) {
             try {
-                jdbcTemplate.execute("SELECT set_config('devsphere.actor_id', '" + principal.userId() + "', true)");
+                jdbcTemplate.queryForObject("SELECT set_config('devsphere.actor_id', ?, true)", String.class, principal.userId().toString());
             } catch (Exception ignored) {
             }
         }

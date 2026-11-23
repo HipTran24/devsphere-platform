@@ -272,7 +272,7 @@ public class ProgressEvaluationService {
     private void setAuditActor(UUID actorId) {
         if (actorId != null) {
             try {
-                jdbcTemplate.execute("SELECT set_config('devsphere.actor_id', '" + actorId + "', true)");
+                jdbcTemplate.queryForObject("SELECT set_config('devsphere.actor_id', ?, true)", String.class, actorId.toString());
             } catch (Exception ignored) {}
         }
     }

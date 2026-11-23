@@ -69,6 +69,7 @@ public class WorkspaceMembershipService {
             UUID workspaceId,
             CreateInvitationCommand command) {
         accessPolicy.requireWorkspaceOwner(principal, workspaceId);
+        setActorId(principal);
 
         if (command == null || command.email() == null || command.email().isBlank()) {
             throw WorkspaceProjectException.validationFailed("Email must not be blank");
@@ -177,6 +178,7 @@ public class WorkspaceMembershipService {
     @Transactional
     public void revokeInvitation(SessionService.Principal principal, UUID workspaceId, UUID invitationId) {
         accessPolicy.requireWorkspaceOwner(principal, workspaceId);
+        setActorId(principal);
 
         String findSql = "SELECT status FROM workspace_invitations WHERE id = ? AND workspace_id = ?";
         List<String> statuses = jdbcTemplate.query(findSql, (rs, rowNum) -> rs.getString("status"), invitationId, workspaceId);
@@ -312,6 +314,7 @@ public class WorkspaceMembershipService {
     @Transactional
     public void removeMember(SessionService.Principal principal, UUID workspaceId, UUID targetUserId) {
         accessPolicy.requireWorkspaceOwner(principal, workspaceId);
+        setActorId(principal);
 
         if (principal.userId().equals(targetUserId)) {
             throw WorkspaceProjectException.lastOwner("Cannot remove workspace owner");
@@ -350,6 +353,7 @@ public class WorkspaceMembershipService {
     @Transactional
     public void transferOwnership(SessionService.Principal principal, UUID workspaceId, TransferOwnershipCommand command) {
         accessPolicy.requireWorkspaceOwner(principal, workspaceId);
+        setActorId(principal);
 
         if (command == null || command.targetUserId() == null) {
             throw WorkspaceProjectException.validationFailed("Target user id must be provided");
@@ -410,6 +414,15 @@ public class WorkspaceMembershipService {
 
     private static Instant toInstant(Timestamp timestamp) {
         return timestamp != null ? timestamp.toInstant() : null;
+    }
+
+    private void setActorId(SessionService.Principal principal) {
+        if (principal != null && principal.userId() != null) {
+            try {
+                jdbcTemplate.queryForObject("SELECT set_config('devsphere.actor_id', ?, true)", String.class, principal.userId().toString());
+            } catch (Exception ignored) {
+            }
+        }
     }
 
     private static String getRootMessage(Throwable throwable) {

@@ -113,6 +113,7 @@ public class ProjectRoleService {
             UUID projectId,
             GrantRoleCommand command) {
         accessPolicy.requireProjectRole(principal, workspaceId, projectId, ProjectRole.PM);
+        setActorId(principal);
 
         if (command == null || command.userId() == null || command.role() == null) {
             throw WorkspaceProjectException.validationFailed("User id and role must be provided");
@@ -205,6 +206,7 @@ public class ProjectRoleService {
             UUID targetUserId,
             ProjectRole role) {
         accessPolicy.requireProjectRole(principal, workspaceId, projectId, ProjectRole.PM);
+        setActorId(principal);
 
         if (role == null) {
             throw WorkspaceProjectException.validationFailed("Role must not be null");
@@ -258,6 +260,7 @@ public class ProjectRoleService {
             UUID projectId,
             UUID targetUserId) {
         accessPolicy.requireProjectRole(principal, workspaceId, projectId, ProjectRole.PM);
+        setActorId(principal);
 
         String memberSql = "SELECT id FROM project_members WHERE project_id = ? AND user_id = ?";
         List<UUID> memberIds = jdbcTemplate.query(memberSql, (rs, rowNum) -> UUID.fromString(rs.getString("id")), projectId, targetUserId);
@@ -298,6 +301,15 @@ public class ProjectRoleService {
 
     private static Instant toInstant(Timestamp timestamp) {
         return timestamp != null ? timestamp.toInstant() : null;
+    }
+
+    private void setActorId(SessionService.Principal principal) {
+        if (principal != null && principal.userId() != null) {
+            try {
+                jdbcTemplate.queryForObject("SELECT set_config('devsphere.actor_id', ?, true)", String.class, principal.userId().toString());
+            } catch (Exception ignored) {
+            }
+        }
     }
 
     private static class MemberAccumulator {

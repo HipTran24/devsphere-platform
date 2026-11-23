@@ -127,9 +127,16 @@ public class AiValidationGate {
 
             // Check project itself
             if (projectId.equals(id)) return true;
+
+            // Restrict user references strictly to project members
+            Integer mCount = jdbcTemplate.queryForObject(
+                    "SELECT count(*) FROM project_members WHERE project_id = ? AND user_id = ?",
+                    Integer.class, projectId, id
+            );
+            return mCount != null && mCount > 0;
         }
 
-        // Check users
+        // Global fallback if no project context
         Integer uCount = jdbcTemplate.queryForObject(
                 "SELECT count(*) FROM users WHERE id = ?",
                 Integer.class, id

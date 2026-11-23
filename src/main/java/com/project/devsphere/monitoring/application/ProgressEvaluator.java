@@ -100,7 +100,8 @@ public class ProgressEvaluator {
         if ("CODE".equalsIgnoreCase(workKind) && codeEvidence != null) {
             boolean codeEvidencePassed = codeEvidence.prLinked()
                     && codeEvidence.ciSuccess()
-                    && codeEvidence.codeReviewPass();
+                    && codeEvidence.codeReviewPass()
+                    && codeEvidence.independentReviewer();
 
             if (!codeEvidencePassed && "VERIFIED".equalsIgnoreCase(evalStatus)) {
                 evalStatus = "EVIDENCE_INCOMPLETE";

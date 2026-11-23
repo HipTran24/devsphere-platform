@@ -107,7 +107,7 @@ public class QualityGateService {
 
         // 1. Linked PR activity
         List<Map<String, Object>> prActivities = jdbcTemplate.queryForList(
-                "SELECT pr_number, pr_head_sha, actor_login FROM github_activities " +
+                "SELECT pr_number, pr_head_sha, actor_login, state FROM github_activities " +
                         "WHERE work_item_id = ? AND project_id = ? AND kind = 'PULL_REQUEST' " +
                         "ORDER BY happened_at DESC LIMIT 1",
                 workItemId, projectId
@@ -132,6 +132,23 @@ public class QualityGateService {
         Map<String, Object> prActivity = prActivities.get(0);
         Integer prNumber = (Integer) prActivity.get("pr_number");
         String prHeadSha = (String) prActivity.get("pr_head_sha");
+        String prState = (String) prActivity.get("state");
+
+        if ("CLOSED".equalsIgnoreCase(prState)) {
+            blockers.add("Linked pull request #" + prNumber + " is closed without being merged");
+            return new QualityGateResponse(
+                    QualityGateStatus.FAILED,
+                    false,
+                    workItemId,
+                    prNumber,
+                    null,
+                    false,
+                    false,
+                    criteriaPassed,
+                    "Pull request is closed without merge",
+                    blockers
+            );
+        }
 
         if (prHeadSha == null || prHeadSha.isBlank()) {
             blockers.add("Linked pull request #" + prNumber + " does not have a valid head commit SHA");
@@ -196,7 +213,7 @@ public class QualityGateService {
 
         List<Map<String, Object>> reviews = jdbcTemplate.queryForList(
                 "SELECT status, context_version, reviewer_kind, reviewer_id FROM code_reviews " +
-                        "WHERE project_id = ? AND head_sha = ? AND pr_number = ? " +
+                        "WHERE project_id = ? AND head_sha = ? AND pr_number = ? AND scope = 'PR' " +
                         "ORDER BY completed_at DESC NULLS LAST, created_at DESC LIMIT 1",
                 projectId, normalizedHeadSha, prNumber
         );

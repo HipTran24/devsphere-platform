@@ -82,7 +82,7 @@ public class DependencyService {
 
         try {
             if (principal.userId() != null) {
-                jdbcTemplate.execute("SELECT set_config('devsphere.actor_id', '" + principal.userId() + "', true)");
+                jdbcTemplate.queryForObject("SELECT set_config('devsphere.actor_id', ?, true)", String.class, principal.userId().toString());
             }
             jdbcTemplate.update(
                     insertSql,
@@ -134,7 +134,7 @@ public class DependencyService {
         accessPolicy.requireProjectRole(principal, workspaceId, projectId, ProjectRole.PM);
 
         if (principal.userId() != null) {
-            jdbcTemplate.execute("SELECT set_config('devsphere.actor_id', '" + principal.userId() + "', true)");
+            jdbcTemplate.queryForObject("SELECT set_config('devsphere.actor_id', ?, true)", String.class, principal.userId().toString());
         }
 
         int rows = jdbcTemplate.update(

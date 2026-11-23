@@ -74,8 +74,8 @@ public class GitHubWebhookService {
         }
 
         String effectiveSecret = (secret != null && !secret.isBlank()) ? secret : defaultWebhookSecret;
-        if (effectiveSecret == null) {
-            effectiveSecret = "";
+        if (effectiveSecret == null || effectiveSecret.isBlank()) {
+            throw GitHubException.webhookSignatureInvalid("Webhook secret is not configured on the server");
         }
 
         try {

@@ -613,6 +613,29 @@ paths:
         '404':
           $ref: '#/components/responses/NotFoundProblem'
 
+  /workspaces/{workspaceId}/projects/{projectId}/attachments/{attachmentId}/download:
+    get:
+      summary: Request Pre-signed Download URL
+      description: Generates a pre-signed S3 download URL for an attachment, validating project and channel access.
+      operationId: downloadAttachment
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceId'
+        - $ref: '#/components/parameters/ProjectId'
+        - $ref: '#/components/parameters/AttachmentId'
+      responses:
+        '200':
+          description: Pre-signed download URL generated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DownloadAttachmentResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedProblem'
+        '403':
+          $ref: '#/components/responses/ForbiddenProblem'
+        '404':
+          $ref: '#/components/responses/NotFoundProblem'
+
   # =========================================================================
   # 6. User Notifications Endpoints
   # =========================================================================
