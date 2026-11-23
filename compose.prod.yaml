@@ -194,6 +194,57 @@ services:
     networks:
       - internal_net
 
+  nginx:
+    <<: *hardening
+    image: nginx:1.28-alpine
+    container_name: devsphere-nginx
+    depends_on:
+      backend:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./infra/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./infra/nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./infra/nginx/snippets:/etc/nginx/snippets:ro
+      - certbot-conf:/etc/letsencrypt:ro
+      - certbot-www:/var/www/certbot:ro
+    # Reload periodically so renewed certificates are picked up without downtime.
+    command:
+      - sh
+      - -c
+      - 'while :; do sleep 6h & wait $${!}; nginx -s reload; done & exec nginx -g "daemon off;"'
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1/healthz || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 256m
+    networks:
+      - public_net
+      - internal_net
+
+  # Let's Encrypt tooling. Issue certificates with infra/nginx/init-letsencrypt.sh,
+  # renew with: docker compose -f compose.prod.yaml --profile tools run --rm certbot renew
+  certbot:
+    image: certbot/certbot
+    profiles: ["tools"]
+    security_opt:
+      - no-new-privileges:true
+    entrypoint: ["certbot"]
+    volumes:
+      - certbot-conf:/etc/letsencrypt
+      - certbot-www:/var/www/certbot
+    networks:
+      - public_net
+
 networks:
   public_net:
     driver: bridge
@@ -204,3 +255,5 @@ networks:
 volumes:
   postgres-data:
   redis-data:
+  certbot-conf:
+  certbot-www:
