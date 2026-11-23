@@ -529,8 +529,15 @@
     text-decoration: underline;
 }
 
-.inviteList:has(.emptyInvites) {
+.inviteList:has(.emptyInvites),
+.inviteList:has(.inviteStatePanel) {
     align-content: center;
+}
+
+.inviteStatePanel {
+    grid-column: 1 / -1;
+    justify-self: center;
+    width: 90%;
 }
 
 .emptyInvites {
