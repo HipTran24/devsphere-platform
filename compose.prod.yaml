@@ -1,0 +1,109 @@
+# DevSphere production stack (single EC2 host, Docker Compose v2).
+#
+#   docker compose -f compose.prod.yaml --env-file .env up -d
+#
+# Only nginx publishes ports (80/443). Everything else lives on internal_net,
+# which has no route to the outside world.
+name: devsphere-prod
+
+x-hardening: &hardening
+  security_opt:
+    - no-new-privileges:true
+  restart: unless-stopped
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "5"
+
+services:
+  postgres:
+    <<: *hardening
+    image: postgres:18.7
+    container_name: devsphere-postgres
+    environment:
+      POSTGRES_DB: ${DATABASE_NAME:-devsphere}
+      POSTGRES_USER: ${MIGRATION_USER:-devsphere}
+      POSTGRES_PASSWORD: ${MIGRATION_PASSWORD:?Set MIGRATION_PASSWORD in .env}
+      DATABASE_USER: ${DATABASE_USER:-devsphere_app}
+      DATABASE_PASSWORD: ${DATABASE_PASSWORD:?Set DATABASE_PASSWORD in .env}
+      TZ: UTC
+      PGTZ: UTC
+    volumes:
+      - postgres-data:/var/lib/postgresql
+      - ./infra/postgres/runtime-role.sql:/docker-entrypoint-initdb.d/010-runtime-role.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    stop_grace_period: 60s
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2g
+    networks:
+      - internal_net
+
+  redis:
+    <<: *hardening
+    image: redis:7.4-alpine
+    container_name: devsphere-redis
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}
+      REDISCLI_AUTH: ${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}
+    command:
+      - sh
+      - -c
+      - exec redis-server --requirepass "$$REDIS_PASSWORD" --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep -q PONG"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 384m
+    networks:
+      - internal_net
+
+  # One-shot tool: re-applies the least-privilege runtime role on an existing volume.
+  #   docker compose -f compose.prod.yaml --profile tools run --rm database-setup
+  database-setup:
+    image: postgres:18.7
+    profiles: ["tools"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      PGHOST: postgres
+      PGPORT: 5432
+      PGDATABASE: ${DATABASE_NAME:-devsphere}
+      PGUSER: ${MIGRATION_USER:-devsphere}
+      PGPASSWORD: ${MIGRATION_PASSWORD:?Set MIGRATION_PASSWORD in .env}
+      DATABASE_USER: ${DATABASE_USER:-devsphere_app}
+      DATABASE_PASSWORD: ${DATABASE_PASSWORD:?Set DATABASE_PASSWORD in .env}
+    volumes:
+      - ./infra/postgres/runtime-role.sql:/bootstrap/runtime-role.sql:ro
+    command: ["psql", "-X", "-v", "ON_ERROR_STOP=1", "-f", "/bootstrap/runtime-role.sql"]
+    networks:
+      - internal_net
+
+networks:
+  public_net:
+    driver: bridge
+  internal_net:
+    driver: bridge
+    internal: true
+
+volumes:
+  postgres-data:
+  redis-data:
