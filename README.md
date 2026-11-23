@@ -4,7 +4,7 @@
 
 [![Java](https://img.shields.io/badge/Java-27-ED8B00?style=for-the-badge&logo=openjdk&logoColor=white)](https://jdk.java.net/27/)
 [![Spring Boot](https://img.shields.io/badge/Spring_Boot-4.1.2-6DB33F?style=for-the-badge&logo=springboot&logoColor=white)](https://spring.io/projects/spring-boot)
-[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?style=for-the-badge&logo=postgresql&logoColor=white)](https://www.postgresql.org/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-18.7-4169E1?style=for-the-badge&logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 [![Next.js](https://img.shields.io/badge/Next.js-16.4.5_Turbopack-000000?style=for-the-badge&logo=next.js&logoColor=white)](https://nextjs.org/)
 [![Tests](https://img.shields.io/badge/Backend_Tests-841_PASS_|_0_FAIL_|_0_SKIP-success?style=for-the-badge&logo=junit5&logoColor=white)](#kiểm-thử--nghiệm-thu-7-cổng)
 [![Playwright E2E](https://img.shields.io/badge/Playwright_E2E-24_PASS-2EAD33?style=for-the-badge&logo=playwright&logoColor=white)](#kiểm-thử--nghiệm-thu-7-cổng)
@@ -190,7 +190,7 @@ python3 -m unittest discover -s tests/infra -v
 
 | Cổng kiểm thử | Phạm vi kiểm tra | Kết quả thực tế | Trạng thái |
 |:---|---|:---:|:---:|
-| **Gate 1** | Backend Unit & Integration Tests (PostgreSQL 16) | **841 / 841 PASS** (0 failures, 0 skipped) | ✅ **PASS** |
+| **Gate 1** | Backend Unit & Integration Tests (PostgreSQL 18.7) | **841 / 841 PASS** (0 failures, 0 skipped) | ✅ **PASS** |
 | **Gate 2** | Frontend Unit & Accessibility Tests | **17 / 17 PASS** | ✅ **PASS** |
 | **Gate 3** | Frontend ESLint Code Style | **0 errors, 0 warnings** | ✅ **PASS** |
 | **Gate 4** | Next.js Production Build | **12 / 12 static pages generated** | ✅ **PASS** |
