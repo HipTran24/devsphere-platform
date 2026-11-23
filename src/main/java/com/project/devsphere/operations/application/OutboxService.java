@@ -51,7 +51,7 @@ public class OutboxService {
         this.jdbc = Objects.requireNonNull(jdbc, "jdbc must not be null");
     }
 
-    /** Job to enqueue; {@code scheduledAt} defaults to "now" when null. */
+    /** Job to enqueue; {@code scheduledAt} defaults to the database clock's {@code now()} when null. */
     public record EnqueueRequest(
             BackgroundJob.JobKind kind,
             UUID workspaceId,
@@ -126,16 +126,15 @@ public class OutboxService {
         rejectSecrets(payload);
         String payloadJson = canonicalJson(payload);
         String hash = sha256(payloadJson);
-        Instant scheduledAt = request.scheduledAt() != null ? request.scheduledAt() : Instant.now();
 
         List<UUID> inserted = jdbc.query("""
                 insert into background_jobs(workspace_id,project_id,requested_by,job_kind,idempotency_key,request_hash,payload,scheduled_at)
-                values (?,?,?,?,?,?,?::jsonb,?)
+                values (?,?,?,?,?,?,?::jsonb,coalesce(?::timestamptz,now()))
                 on conflict (workspace_id,project_id,job_kind,idempotency_key) where idempotency_key is not null do nothing
                 returning id
                 """, (rs, n) -> rs.getObject(1, UUID.class),
                 request.workspaceId(), request.projectId(), request.requestedBy(), kind.name(), key, hash, payloadJson,
-                Timestamp.from(scheduledAt));
+                request.scheduledAt() == null ? null : Timestamp.from(request.scheduledAt()));
         if (!inserted.isEmpty()) {
             return new EnqueueResult(inserted.getFirst(), true, key, hash);
         }
