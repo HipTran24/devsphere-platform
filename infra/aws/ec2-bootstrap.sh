@@ -54,7 +54,8 @@ echo "==> Creating deploy user and directories"
 if ! id "${APP_USER}" >/dev/null 2>&1; then
   useradd --system --create-home --shell /bin/bash --groups docker "${APP_USER}"
 fi
-install -d -o "${APP_USER}" -g "${APP_USER}" -m 0750 "${APP_DIR}" "${APP_DIR}/backups"
+BACKUP_HOST_DIR="${BACKUP_HOST_DIR:-/var/backups/devsphere}"
+install -d -o "${APP_USER}" -g "${APP_USER}" -m 0750 "${APP_DIR}" "${BACKUP_HOST_DIR}"
 
 echo "==> Configuring firewall (SSH, HTTP, HTTPS only)"
 ufw --force reset

@@ -147,7 +147,7 @@ services:
       - DEVSPHERE_QUARTZ_CRON_NIGHTLY_BACKUP
     volumes:
       # Read-only view of the encrypted backups so the nightly BACKUP_CHECK job can verify freshness.
-      - ${BACKUP_HOST_DIR:-./backups}:/backups:ro
+      - ${BACKUP_HOST_DIR:-/var/backups/devsphere}:/backups:ro
     healthcheck:
       # Actuator is served on the internal management port 8081 by the prod profile.
       test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8081/actuator/health/readiness || exit 1"]
