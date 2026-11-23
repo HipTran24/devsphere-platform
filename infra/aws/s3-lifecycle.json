@@ -1,0 +1,30 @@
+{
+  "Rules": [
+    {
+      "ID": "abort-incomplete-multipart-uploads",
+      "Status": "Enabled",
+      "Filter": { "Prefix": "" },
+      "AbortIncompleteMultipartUpload": { "DaysAfterInitiation": 7 }
+    },
+    {
+      "ID": "attachments-to-infrequent-access",
+      "Status": "Enabled",
+      "Filter": { "Prefix": "attachments/" },
+      "Transitions": [
+        { "Days": 90, "StorageClass": "STANDARD_IA" }
+      ]
+    },
+    {
+      "ID": "expire-noncurrent-versions",
+      "Status": "Enabled",
+      "Filter": { "Prefix": "" },
+      "NoncurrentVersionExpiration": { "NoncurrentDays": 90 }
+    },
+    {
+      "ID": "expire-delete-markers",
+      "Status": "Enabled",
+      "Filter": { "Prefix": "" },
+      "Expiration": { "ExpiredObjectDeleteMarker": true }
+    }
+  ]
+}
