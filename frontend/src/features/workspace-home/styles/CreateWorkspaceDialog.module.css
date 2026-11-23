@@ -1,0 +1,190 @@
+.dialog {
+    --dialog-padding: 24px;
+    box-sizing: border-box;
+    width: min(480px, calc(100% - 32px));
+    max-width: none;
+    max-height: calc(100dvh - 32px);
+    margin: auto;
+    padding: var(--dialog-padding);
+    overflow: auto;
+    border: 0;
+    border-radius: 16px;
+    background: var(--color-card);
+    color: var(--color-text);
+    color-scheme: dark;
+}
+
+.dialog::backdrop {
+    background: rgb(0 0 0 / 70%);
+}
+
+.header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 16px;
+}
+
+.header h2 {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 0;
+    font-size: 18px;
+    font-weight: 600;
+}
+
+.header h2 svg {
+    flex-shrink: 0;
+    color: var(--color-primary);
+}
+
+.dialog button {
+    min-height: 44px;
+    font-size: 14px;
+}
+
+.header button {
+    min-width: 44px;
+    padding: 0;
+}
+
+.form,
+.field {
+    display: grid;
+    gap: 16px;
+}
+
+.field {
+    min-width: 0;
+    gap: 6px;
+    font-size: 13px;
+}
+
+.field > label {
+    text-align: left;
+    color: var(--color-white);
+    font-weight: 400;
+}
+
+.owner {
+    color: var(--color-text-secondary);
+    font-weight: 400;
+}
+
+.input,
+.url {
+    box-sizing: border-box;
+    width: 100%;
+    min-height: 44px;
+    padding: 10px 12px;
+    border: 1px solid color-mix(in srgb, var(--color-text) 22%, transparent);
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--color-background) 28%, var(--color-card));
+    color: var(--color-text);
+    font: inherit;
+    font-weight: 400;
+}
+
+.input::placeholder,
+.url input::placeholder {
+    color: var(--color-text-secondary);
+    opacity: 1;
+}
+
+.input:focus:not([aria-invalid="true"]),
+.url:has(input:focus:not([aria-invalid="true"])) {
+    border-color: var(--color-primary);
+    outline: none;
+}
+
+.input[aria-invalid="true"],
+.url:has(input[aria-invalid="true"]) {
+    border-bottom-color: var(--color-error);
+}
+
+.input[aria-invalid="true"]:focus,
+.url input:focus {
+    outline: none;
+}
+
+textarea.input {
+    min-height: 88px;
+    resize: vertical;
+}
+
+.url {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding-block: 0;
+    overflow-wrap: anywhere;
+    color: var(--color-white);
+}
+
+.url[data-empty="true"] {
+    color: var(--color-text-secondary);
+}
+
+.url input {
+    flex: 1;
+    min-width: 0;
+    min-height: 44px;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+}
+
+.owner {
+    margin: 0;
+    font-size: 13px;
+}
+
+.error {
+    margin: 0;
+    color: var(--color-error);
+    font-size: 11px;
+    line-height: 16px;
+    text-align: left;
+}
+
+.actions {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    margin-inline: calc(-1 * var(--dialog-padding));
+    padding: 16px var(--dialog-padding) 0;
+    border-top: 1px solid color-mix(in srgb, var(--color-text) 10%, transparent);
+}
+
+.actions button {
+    min-height: 36px;
+    padding: 6px 12px;
+    border-radius: 10px;
+    font-size: 13px;
+}
+
+.actions button[type="button"] {
+    background: color-mix(in srgb, var(--color-text) 9%, var(--color-card));
+}
+
+.actions button[type="button"]:hover:not(:disabled) {
+    background-color: color-mix(in srgb, var(--color-text) 16%, var(--color-card));
+}
+
+.actions button[type="submit"]:hover:not(:disabled) {
+    background-color: color-mix(in srgb, var(--color-primary) 86%, var(--color-white));
+}
+
+@media (max-width: 480px) {
+    .dialog {
+        --dialog-padding: 16px;
+    }
+
+    .field {
+        font-size: 16px;
+    }
+}
+

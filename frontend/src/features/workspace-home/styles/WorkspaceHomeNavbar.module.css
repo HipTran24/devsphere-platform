@@ -1,0 +1,163 @@
+.workspaceHome {
+    --workspace-navbar-height: 64px;
+}
+
+.header {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+}
+
+.navbar {
+    height: var(--workspace-navbar-height);
+    background-color: var(--color-background);
+    padding: 0 24px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    align-items: center;
+    border-bottom: 0.8px solid #20201f;
+
+}
+
+.navLinks {
+    justify-self: center;
+    display: flex;
+    align-items: center;
+    list-style: none;
+    gap: 24px;
+    margin: 0;
+    padding: 0;
+
+
+}
+
+.navLink {
+    display: inline-flex;
+    align-items: center;
+    height: 32px;
+    padding: 0 12px;
+    border-radius: 48px;
+    font-size: 14px;
+    font-weight: 400;
+    letter-spacing: 0.01rem;
+    color: var(--color-text-secondary);
+    text-decoration: none;
+}
+
+.navLink:hover {
+    color: var(--color-text);
+    background-color: #111511;
+}
+
+.account {
+    position: relative;
+    justify-self: end;
+}
+
+.avatar {
+    display: grid;
+    place-items: center;
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    border: 2px solid color-mix(in srgb, var(--color-primary) 35%, transparent);
+    border-radius: 50%;
+    background-color: #192624;
+    color: var(--color-text);
+    cursor: pointer;
+}
+
+.avatar:hover {
+    border-color: color-mix(in srgb, var(--color-primary) 80%, transparent);
+    box-shadow:
+        0 0 5px 1px color-mix(in srgb, var(--color-primary) 45%, transparent),
+        0 0 16px 3px color-mix(in srgb, var(--color-primary) 25%, transparent);
+}
+
+.accountDropdown {
+    position: absolute;
+    inset-block-start: calc(100% + 10px);
+    inset-inline-end: 0;
+    box-sizing: border-box;
+    width: min(260px, calc(100vw - 48px));
+    padding: 6px;
+    border: 1px solid color-mix(in srgb, var(--color-text) 12%, transparent);
+    border-radius: 12px;
+    background: var(--color-card);
+    box-shadow: 0 12px 32px rgb(0 0 0 / 45%);
+    text-align: left;
+}
+
+.accountIdentity {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px;
+    border-bottom: 1px solid color-mix(in srgb, var(--color-text) 10%, transparent);
+}
+
+.accountPortrait {
+    display: grid;
+    flex: 0 0 36px;
+    height: 36px;
+    place-items: center;
+    border-radius: 50%;
+    background: color-mix(in srgb, var(--color-primary) 12%, var(--color-card));
+    color: var(--color-white);
+}
+
+.accountDetails {
+    display: grid;
+    gap: 4px;
+    min-width: 0;
+    font-size: 14px;
+    overflow-wrap: anywhere;
+}
+
+.accountDetails span {
+    color: var(--color-text-secondary);
+    font-size: 12px;
+}
+
+.accountActions {
+    margin: 0;
+    padding: 4px 0;
+    list-style: none;
+}
+
+.accountAction,
+.accountPending {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 40px;
+    padding: 0 10px;
+    font-size: 13px;
+}
+
+.accountAction {
+    width: 100%;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--color-text);
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.accountAction:hover {
+    background: color-mix(in srgb, var(--color-text) 8%, var(--color-card));
+}
+
+.accountPending {
+    color: var(--color-text);
+}
+
+.accountPending svg {
+    flex-shrink: 0;
+}
+
+.accountSession {
+    padding-top: 4px;
+    border-top: 1px solid color-mix(in srgb, var(--color-text) 10%, transparent);
+}
