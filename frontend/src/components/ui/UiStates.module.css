@@ -1,0 +1,273 @@
+.srOnly {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
+}
+
+@keyframes skeletonShimmer {
+    0% {
+        background-position: 200% 0;
+    }
+    100% {
+        background-position: -200% 0;
+    }
+}
+
+.skeletonBlock {
+    border-radius: 8px;
+    background: linear-gradient(
+        90deg,
+        #1f1f1e 25%,
+        #2c2c2a 50%,
+        #1f1f1e 75%
+    );
+    background-size: 200% 100%;
+    animation: skeletonShimmer 1.6s ease-in-out infinite;
+}
+
+.loadingPage {
+    display: grid;
+    gap: 20px;
+    width: 100%;
+    max-width: 1000px;
+    margin-inline: auto;
+    padding: 32px 24px;
+}
+
+.loadingHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.loadingTitleBar {
+    width: min(260px, 60%);
+    height: 28px;
+}
+
+.loadingActionBar {
+    width: 140px;
+    height: 38px;
+    border-radius: 10px;
+}
+
+.loadingGrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 16px;
+    margin-top: 16px;
+}
+
+.loadingCard {
+    display: grid;
+    gap: 12px;
+    padding: 20px;
+    border: 1px solid #2b2b29;
+    border-radius: 12px;
+    background: var(--color-card);
+}
+
+.loadingCardTitle {
+    width: 65%;
+    height: 18px;
+}
+
+.loadingCardMeta {
+    width: 45%;
+    height: 12px;
+}
+
+.loadingCardLine {
+    width: 100%;
+    height: 14px;
+}
+
+.loadingCardLineShort {
+    width: 78%;
+    height: 14px;
+}
+
+.loadingList {
+    display: grid;
+    gap: 10px;
+    width: 100%;
+}
+
+.loadingListRow {
+    display: grid;
+    grid-template-columns: 32px minmax(0, 1fr) 72px;
+    align-items: center;
+    gap: 12px;
+    padding: 14px;
+    border: 1px solid #2b2b29;
+    border-radius: 10px;
+    background: var(--color-card);
+}
+
+.loadingAvatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+}
+
+.loadingRowBody {
+    display: grid;
+    gap: 8px;
+}
+
+.loadingRowBadge {
+    width: 72px;
+    height: 20px;
+    border-radius: 999px;
+}
+
+.loadingInline {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    color: var(--color-text-secondary);
+    font-size: 14px;
+}
+
+.loadingDot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--color-primary);
+}
+
+.stateCard {
+    display: grid;
+    justify-items: center;
+    gap: 12px;
+    padding: 36px 24px;
+    border-radius: 14px;
+    background: var(--color-card);
+    color: var(--color-text);
+    text-align: center;
+}
+
+.stateCardCompact {
+    padding: 20px 16px;
+    gap: 8px;
+}
+
+.errorCard {
+    border: 1px solid #7f1d1d;
+    background: color-mix(in srgb, #450a0a 35%, var(--color-card));
+}
+
+.emptyCard {
+    border: 1px dashed #383835;
+}
+
+.stateIconWrap {
+    display: grid;
+    place-items: center;
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    background: #232322;
+    color: var(--color-text-secondary);
+}
+
+.errorIconWrap {
+    background: color-mix(in srgb, #ff5a65 16%, #1c1917);
+    color: #ff5a65;
+}
+
+.stateTitle {
+    margin: 0;
+    color: var(--color-text);
+    font-size: 18px;
+    font-weight: 600;
+    line-height: 1.35;
+}
+
+.stateCardCompact .stateTitle {
+    font-size: 15px;
+}
+
+.stateMessage {
+    max-width: 48ch;
+    margin: 0;
+    color: var(--color-text-secondary);
+    font-size: 14px;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+}
+
+.stateCode {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border: 1px solid #3f3f46;
+    border-radius: 6px;
+    background: #121211;
+    color: var(--color-text-secondary);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 12px;
+}
+
+.stateActions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 10px;
+    margin-top: 4px;
+}
+
+.primaryAction,
+.secondaryAction {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: 40px;
+    padding: 8px 16px;
+    border-radius: 10px;
+    font-size: 14px;
+    font-weight: 600;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.primaryAction {
+    border: 1px solid var(--color-primary);
+    background: var(--color-primary);
+    color: var(--color-black);
+}
+
+.primaryAction:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--color-primary) 88%, var(--color-white));
+}
+
+.secondaryAction {
+    border: 1px solid #3f3f46;
+    background: transparent;
+    color: var(--color-text);
+}
+
+.secondaryAction:hover:not(:disabled) {
+    background: #242423;
+}
+
+.primaryAction:focus-visible,
+.secondaryAction:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .skeletonBlock {
+        animation: none;
+        background: #242422;
+    }
+}

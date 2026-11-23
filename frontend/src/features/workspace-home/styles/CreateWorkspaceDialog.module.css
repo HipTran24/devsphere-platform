@@ -150,6 +150,10 @@ textarea.input {
     text-align: left;
 }
 
+.submitAlert {
+    margin-bottom: 16px;
+}
+
 .actions {
     display: flex;
     justify-content: space-between;

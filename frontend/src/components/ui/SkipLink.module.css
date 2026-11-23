@@ -1,0 +1,27 @@
+.skipLink {
+    position: fixed;
+    top: 12px;
+    left: 12px;
+    z-index: 9999;
+    padding: 10px 16px;
+    border: 1px solid var(--color-primary);
+    border-radius: 10px;
+    background: var(--color-primary);
+    color: var(--color-black);
+    font-size: 14px;
+    font-weight: 700;
+    line-height: 1.2;
+    text-decoration: none;
+    transform: translateY(-160%);
+    opacity: 0;
+    pointer-events: none;
+}
+
+.skipLink:focus,
+.skipLink:focus-visible {
+    transform: translateY(0);
+    opacity: 1;
+    pointer-events: auto;
+    outline: 2px solid var(--color-white);
+    outline-offset: 2px;
+}
