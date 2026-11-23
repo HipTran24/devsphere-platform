@@ -284,4 +284,80 @@ class ProjectServiceTest {
         assertThat(activated.getStatus()).isEqualTo(Project.Status.ACTIVE);
         verify(accessPolicy).requireProjectRole(principal, workspaceId, projectId, ProjectRole.PM);
     }
+
+    @Test
+    void updateProject_withDeadlineApproverId_clientRoleVerified_success() {
+        UUID approverId = UUID.randomUUID();
+        Project p = new Project();
+        p.setId(projectId);
+        p.setWorkspaceId(workspaceId);
+        p.setStatus(Project.Status.PLANNING);
+        p.setName("Initial Name");
+        p.setVersion(0L);
+
+        when(projectRepository.findById(projectId)).thenReturn(Optional.of(p));
+        when(jdbcTemplate.queryForObject(
+                eq("SELECT ds_has_project_role(?, ?, 'CLIENT')"),
+                eq(Boolean.class),
+                eq(projectId),
+                eq(approverId)
+        )).thenReturn(true);
+        when(projectRepository.save(any(Project.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        UpdateProjectCommand command = new UpdateProjectCommand(
+                "Updated Name",
+                null,
+                null,
+                null,
+                null,
+                null,
+                14,
+                approverId,
+                0L
+        );
+
+        Project updated = projectService.updateProject(principal, workspaceId, projectId, command);
+
+        assertThat(updated.getDeadlineApproverId()).isEqualTo(approverId);
+        assertThat(updated.getName()).isEqualTo("Updated Name");
+    }
+
+    @Test
+    void updateProject_withDeadlineApproverId_notClient_throwsValidationFailed() {
+        UUID approverId = UUID.randomUUID();
+        Project p = new Project();
+        p.setId(projectId);
+        p.setWorkspaceId(workspaceId);
+        p.setStatus(Project.Status.PLANNING);
+        p.setVersion(0L);
+
+        when(projectRepository.findById(projectId)).thenReturn(Optional.of(p));
+        when(jdbcTemplate.queryForObject(
+                eq("SELECT ds_has_project_role(?, ?, 'CLIENT')"),
+                eq(Boolean.class),
+                eq(projectId),
+                eq(approverId)
+        )).thenReturn(false);
+
+        UpdateProjectCommand command = new UpdateProjectCommand(
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                approverId,
+                0L
+        );
+
+        assertThatThrownBy(() -> projectService.updateProject(principal, workspaceId, projectId, command))
+                .isInstanceOf(WorkspaceProjectException.class)
+                .satisfies(ex -> {
+                    WorkspaceProjectException wpe = (WorkspaceProjectException) ex;
+                    assertThat(wpe.getStatus()).isEqualTo(HttpStatus.BAD_REQUEST);
+                    assertThat(wpe.getCode()).isEqualTo("VALIDATION_FAILED");
+                    assertThat(wpe.getMessage()).contains("Designated deadline approver must be an active CLIENT member of the project");
+                });
+    }
 }

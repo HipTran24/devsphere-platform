@@ -120,6 +120,7 @@ public class ProjectController {
                 request.plannedStart(),
                 request.committedDeadline(),
                 request.sprintLengthDays(),
+                request.deadlineApproverId(),
                 request.expectedVersion()
         );
 

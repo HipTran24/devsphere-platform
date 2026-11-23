@@ -150,7 +150,7 @@ class DevsphereApplicationTests {
         assertThat(jdbc.queryForObject("select count(*) from information_schema.tables where table_schema='public' and table_type='BASE TABLE' and table_name<>'flyway_schema_history'",Integer.class)).isEqualTo(36);
         assertThat(em.getMetamodel().getEntities()).hasSize(36);
         assertThat(flyway.info().applied()).extracting(item -> item.getVersion())
-                .containsExactlyElementsOf(List.of("1", "2", "3", "4", "5", "6", "7", "8", "9").stream()
+                .containsExactlyElementsOf(List.of("1", "2", "3", "4", "5", "6", "7", "8", "9", "10").stream()
                         .map(MigrationVersion::fromVersion).toList());
         flyway.validate();
         assertThat(flyway.migrate().migrationsExecuted).isZero();

@@ -208,6 +208,7 @@ public class ProjectService {
                 request.plannedStart(),
                 request.committedDeadline(),
                 request.sprintLengthDays(),
+                request.deadlineApproverId(),
                 request.expectedVersion()
         );
         Project project = updateProject(principal, workspaceId, projectId, command);
@@ -243,6 +244,7 @@ public class ProjectService {
                 project.getPlannedStart(),
                 project.getCommittedDeadline(),
                 project.getSprintLengthDays(),
+                project.getDeadlineApproverId(),
                 project.getNextItemNumber(),
                 project.getCreatedAt(),
                 project.getUpdatedAt(),
@@ -339,6 +341,22 @@ public class ProjectService {
                 throw WorkspaceProjectException.validationFailed("Sprint length days must be between 1 and 90");
             }
             project.setSprintLengthDays(length);
+        }
+
+        if (command.deadlineApproverId() != null) {
+            UUID approverId = command.deadlineApproverId();
+            Boolean isClient = jdbcTemplate.queryForObject(
+                    "SELECT ds_has_project_role(?, ?, 'CLIENT')",
+                    Boolean.class,
+                    projectId,
+                    approverId
+            );
+            if (!Boolean.TRUE.equals(isClient)) {
+                throw WorkspaceProjectException.validationFailed(
+                        "Designated deadline approver must be an active CLIENT member of the project"
+                );
+            }
+            project.setDeadlineApproverId(approverId);
         }
 
         setAuditActor(principal.userId());

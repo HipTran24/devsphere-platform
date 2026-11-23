@@ -1,0 +1,708 @@
+openapi: 3.1.0
+info:
+  title: DevSphere Plan Approval, Deadline Consent and Baseline Apply API
+  version: 1.0.0
+  description: >-
+    REST API for previewing plan proposals, approving proposals, managing designated
+    client deadline consent and confirmation flows, and atomically applying approved
+    proposals as immutable project schedule baselines.
+
+servers:
+  - url: /api/v1
+    description: DevSphere API Base
+
+security:
+  - BearerAuth: []
+
+paths:
+  /workspaces/{workspaceId}/projects/{projectId}/plan-proposals/{proposalId}/preview:
+    get:
+      summary: Preview plan proposal
+      description: >-
+        Returns a comprehensive preview of the solved plan proposal including proposed
+        task assignments, total estimated effort, forecast completion timestamp,
+        milestone impacts, and proposed committed deadline adjustments. Guarded by PM role.
+      operationId: previewPlanProposal
+      parameters:
+        - name: workspaceId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: proposalId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Proposal preview retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanProposalPreviewResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedProblem'
+        '403':
+          $ref: '#/components/responses/ForbiddenProblem'
+        '404':
+          $ref: '#/components/responses/NotFoundProblem'
+
+  /workspaces/{workspaceId}/projects/{projectId}/plan-proposals/{proposalId}/approve:
+    post:
+      summary: Approve plan proposal
+      description: >-
+        Approves a solved proposal, transitioning status to APPROVED. Verifies optimistic concurrency
+        against expectedProjectVersion and expectedProposalVersion. When the proposal alters the
+        committed deadline, enforces that the project designates an independent active CLIENT
+        deadline approver who differs from the PM approver.
+      operationId: approvePlanProposal
+      parameters:
+        - name: workspaceId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: proposalId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApprovePlanProposalRequest'
+      responses:
+        '200':
+          description: Plan proposal approved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanProposalResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestProblem'
+        '401':
+          $ref: '#/components/responses/UnauthorizedProblem'
+        '403':
+          $ref: '#/components/responses/ForbiddenProblem'
+        '404':
+          $ref: '#/components/responses/NotFoundProblem'
+        '409':
+          $ref: '#/components/responses/ConflictProblem'
+        '422':
+          $ref: '#/components/responses/UnprocessableProblem'
+
+  /workspaces/{workspaceId}/projects/{projectId}/plan-proposals/{proposalId}/deadline-consent:
+    get:
+      summary: Get deadline consent disclosure details
+      description: >-
+        Returns deadline consent and confirmation details for a proposal. Allows the designated
+        client approver to review current vs proposed committed deadlines, milestone impacts,
+        and current confirmation status without exposing internal solver diagnostics or developer calendars.
+      operationId: getDeadlineConsent
+      parameters:
+        - name: workspaceId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: proposalId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Deadline consent disclosure details retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeadlineConsentResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedProblem'
+        '403':
+          $ref: '#/components/responses/ForbiddenProblem'
+        '404':
+          $ref: '#/components/responses/NotFoundProblem'
+
+  /workspaces/{workspaceId}/projects/{projectId}/plan-proposals/{proposalId}/deadline-confirmation:
+    post:
+      summary: Confirm or decline proposed deadline change
+      description: >-
+        Records an explicit deadline consent decision by the designated CLIENT approver.
+        If confirmed, binds confirmation version and timestamp. Guarded by strict role check
+        (must be the designated CLIENT approver) and optimistic concurrency versions.
+      operationId: confirmDeadline
+      parameters:
+        - name: workspaceId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: proposalId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeadlineConfirmationRequest'
+      responses:
+        '200':
+          description: Deadline confirmation decision recorded successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeadlineConsentResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestProblem'
+        '401':
+          $ref: '#/components/responses/UnauthorizedProblem'
+        '403':
+          $ref: '#/components/responses/ForbiddenProblem'
+        '404':
+          $ref: '#/components/responses/NotFoundProblem'
+        '409':
+          $ref: '#/components/responses/ConflictProblem'
+        '422':
+          $ref: '#/components/responses/UnprocessableProblem'
+
+  /workspaces/{workspaceId}/projects/{projectId}/plan-proposals/{proposalId}/apply:
+    post:
+      summary: Atomically apply approved plan proposal as new baseline
+      description: >-
+        Materializes the approved proposal into official work items, dependencies, and schedule entries.
+        Allocates the next immutable schedule_versions baseline, updates projects.active_schedule_version_id,
+        and applies the committed deadline (verifying independent client confirmation if altered).
+        Transitions the proposal status to APPLIED.
+      operationId: applyPlanProposal
+      parameters:
+        - name: workspaceId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: proposalId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApplyPlanRequest'
+      responses:
+        '200':
+          description: Plan proposal materialized and baseline created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApplyPlanResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestProblem'
+        '401':
+          $ref: '#/components/responses/UnauthorizedProblem'
+        '403':
+          $ref: '#/components/responses/ForbiddenProblem'
+        '404':
+          $ref: '#/components/responses/NotFoundProblem'
+        '409':
+          $ref: '#/components/responses/ConflictProblem'
+        '422':
+          $ref: '#/components/responses/UnprocessableProblem'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Bearer token representing an active authenticated user session.
+
+  schemas:
+    ApprovePlanProposalRequest:
+      type: object
+      required:
+        - expectedProjectVersion
+        - expectedProposalVersion
+      properties:
+        expectedProjectVersion:
+          type: integer
+          description: Expected current version of the project entity.
+          example: 2
+        expectedProposalVersion:
+          type: integer
+          description: Expected current version of the proposal entity.
+          example: 1
+
+    DeadlineConfirmationRequest:
+      type: object
+      required:
+        - expectedProposalVersion
+        - expectedProjectVersion
+        - confirmation
+      properties:
+        expectedProposalVersion:
+          type: integer
+          description: Expected current version of the plan proposal.
+          example: 1
+        expectedProjectVersion:
+          type: integer
+          description: Expected current version of the project.
+          example: 2
+        confirmation:
+          type: boolean
+          description: True to confirm and accept the deadline change; false to decline.
+          example: true
+
+    ApplyPlanRequest:
+      type: object
+      required:
+        - expectedProjectVersion
+        - expectedProposalVersion
+      properties:
+        expectedProjectVersion:
+          type: integer
+          description: Expected current version of the project entity.
+          example: 2
+        expectedProposalVersion:
+          type: integer
+          description: Expected current version of the approved proposal.
+          example: 2
+
+    ApplyPlanResponse:
+      type: object
+      required:
+        - proposalId
+        - scheduleVersionId
+        - versionNo
+        - createdWorkItems
+        - updatedWorkItems
+        - appliedAt
+      properties:
+        proposalId:
+          type: string
+          format: uuid
+        scheduleVersionId:
+          type: string
+          format: uuid
+        versionNo:
+          type: integer
+          description: Sequential version number of the newly materialized schedule baseline.
+          example: 1
+        createdWorkItems:
+          type: integer
+          description: Number of new work items created from proposal temporary items.
+          example: 3
+        updatedWorkItems:
+          type: integer
+          description: Number of existing work items updated with scheduled estimates/dates.
+          example: 2
+        committedDeadline:
+          type: string
+          format: date
+          nullable: true
+          description: New or confirmed committed deadline applied to the project.
+          example: "2026-12-31"
+        appliedAt:
+          type: string
+          format: date-time
+          description: Instant when the proposal was applied and baseline committed.
+
+    DeadlineConsentResponse:
+      type: object
+      required:
+        - proposalId
+        - projectId
+        - changesCommittedDeadline
+        - isDesignatedApprover
+        - proposalVersion
+        - baseProjectVersion
+        - confirmed
+        - milestoneImpacts
+      properties:
+        proposalId:
+          type: string
+          format: uuid
+        projectId:
+          type: string
+          format: uuid
+        changesCommittedDeadline:
+          type: boolean
+          description: Whether the proposal requires altering the project's committed deadline.
+        currentCommittedDeadline:
+          type: string
+          format: date
+          nullable: true
+        proposedCommittedDeadline:
+          type: string
+          format: date
+          nullable: true
+        deadlineApproverUserId:
+          type: string
+          format: uuid
+          nullable: true
+          description: User ID of the designated CLIENT deadline approver.
+        isDesignatedApprover:
+          type: boolean
+          description: Whether the current authenticated caller is the designated deadline approver.
+        proposalVersion:
+          type: integer
+        baseProjectVersion:
+          type: integer
+        confirmed:
+          type: boolean
+          description: Whether the deadline change has been accepted by the designated client.
+        confirmedBy:
+          type: string
+          format: uuid
+          nullable: true
+        confirmedAt:
+          type: string
+          format: date-time
+          nullable: true
+        milestoneImpacts:
+          type: array
+          items:
+            $ref: '#/components/schemas/MilestoneImpactDTO'
+
+    MilestoneImpactDTO:
+      type: object
+      required:
+        - milestoneId
+        - name
+        - targetDate
+      properties:
+        milestoneId:
+          type: string
+          format: uuid
+        name:
+          type: string
+          example: "Alpha Release"
+        targetDate:
+          type: string
+          format: date
+          example: "2026-12-15"
+        delayDays:
+          type: integer
+          nullable: true
+          description: Forecast delay relative to target milestone date in days.
+          example: 4
+
+    PlanProposalPreviewResponse:
+      type: object
+      required:
+        - proposalId
+        - projectId
+        - proposalVersion
+        - baseProjectVersion
+        - solverStatus
+        - proposedTaskCount
+        - totalMinutes
+        - changesCommittedDeadline
+        - tasks
+        - milestoneImpacts
+      properties:
+        proposalId:
+          type: string
+          format: uuid
+        projectId:
+          type: string
+          format: uuid
+        proposalVersion:
+          type: integer
+        baseProjectVersion:
+          type: integer
+        solverStatus:
+          type: string
+          enum: [NOT_RUN, OPTIMAL, FEASIBLE, INFEASIBLE, UNKNOWN, ERROR]
+        proposedTaskCount:
+          type: integer
+          example: 5
+        totalMinutes:
+          type: integer
+          example: 1200
+        forecastFinish:
+          type: string
+          format: date-time
+          nullable: true
+        changesCommittedDeadline:
+          type: boolean
+        currentCommittedDeadline:
+          type: string
+          format: date
+          nullable: true
+        proposedCommittedDeadline:
+          type: string
+          format: date
+          nullable: true
+        tasks:
+          type: array
+          items:
+            $ref: '#/components/schemas/TaskPreviewItem'
+        milestoneImpacts:
+          type: array
+          items:
+            $ref: '#/components/schemas/MilestoneImpactDTO'
+
+    TaskPreviewItem:
+      type: object
+      required:
+        - tempKey
+        - estimateMinutes
+      properties:
+        tempKey:
+          type: string
+          example: "TASK-1"
+        workItemId:
+          type: string
+          format: uuid
+          nullable: true
+        title:
+          type: string
+          example: "Implement OAuth backend"
+        estimateMinutes:
+          type: integer
+          example: 240
+        developerId:
+          type: string
+          format: uuid
+          nullable: true
+        startAt:
+          type: string
+          format: date-time
+          nullable: true
+        finishAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    PlanProposalResponse:
+      type: object
+      required:
+        - id
+        - projectId
+        - kind
+        - baseProjectVersion
+        - status
+        - solverStatus
+        - proposalPayload
+        - solverDetails
+        - assumptions
+        - createdBy
+        - changesCommittedDeadline
+        - createdAt
+        - updatedAt
+        - version
+      properties:
+        id:
+          type: string
+          format: uuid
+        projectId:
+          type: string
+          format: uuid
+        kind:
+          type: string
+          enum: [AI_REQUIREMENT, MANUAL_REPLAN, AUTO_REPLAN]
+        baseProjectVersion:
+          type: integer
+        baseScheduleVersionId:
+          type: string
+          format: uuid
+          nullable: true
+        requirementVersionId:
+          type: string
+          format: uuid
+          nullable: true
+        changeRequestId:
+          type: string
+          format: uuid
+          nullable: true
+        aiJobId:
+          type: string
+          format: uuid
+          nullable: true
+        status:
+          type: string
+          enum: [DRAFT, PENDING_APPROVAL, APPROVED, REJECTED, APPLIED, STALE]
+        proposalPayload:
+          type: object
+        solverStatus:
+          type: string
+          enum: [NOT_RUN, OPTIMAL, FEASIBLE, INFEASIBLE, UNKNOWN, ERROR]
+        solverDetails:
+          type: object
+        assumptions:
+          type: array
+          items:
+            type: object
+        createdBy:
+          type: string
+          format: uuid
+        approvedBy:
+          type: string
+          format: uuid
+          nullable: true
+        approvedAt:
+          type: string
+          format: date-time
+          nullable: true
+        changesCommittedDeadline:
+          type: boolean
+        proposedCommittedDeadline:
+          type: string
+          format: date
+          nullable: true
+        deadlineConfirmedBy:
+          type: string
+          format: uuid
+          nullable: true
+        deadlineConfirmedAt:
+          type: string
+          format: date-time
+          nullable: true
+        deadlineConfirmationVersion:
+          type: integer
+          nullable: true
+        deadlineConfirmedProjectVersion:
+          type: integer
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        version:
+          type: integer
+
+    ProblemDetail:
+      type: object
+      required:
+        - type
+        - title
+        - status
+        - detail
+      properties:
+        type:
+          type: string
+          format: uri
+          example: "about:blank"
+        title:
+          type: string
+          example: "VALIDATION_FAILED"
+        status:
+          type: integer
+          example: 400
+        detail:
+          type: string
+          example: "Validation failed for request arguments"
+        instance:
+          type: string
+          format: uri
+        code:
+          type: string
+          description: Application error code identifying error classification.
+          enum:
+            - VALIDATION_FAILED
+            - RESOURCE_NOT_FOUND
+            - ACCESS_DENIED
+            - PLAN_STALE
+            - PROPOSAL_VERSION_CONFLICT
+            - INDEPENDENT_CLIENT_REQUIRED
+            - CLIENT_DEADLINE_CONFIRMATION_REQUIRED
+            - PROPOSAL_NOT_APPROVED
+            - PROPOSAL_ALREADY_APPLIED
+            - INVALID_DEADLINE_APPROVER
+            - DATA_INTEGRITY_VIOLATION
+            - INTERNAL_ERROR
+
+  responses:
+    BadRequestProblem:
+      description: Bad request due to missing, invalid or malformed arguments (code VALIDATION_FAILED).
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+
+    UnauthorizedProblem:
+      description: Authentication credential missing or invalid token.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+
+    ForbiddenProblem:
+      description: Caller lacks required PM or CLIENT role, or does not belong to project (code ACCESS_DENIED).
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+
+    NotFoundProblem:
+      description: Requested plan proposal, project or workspace not found (code RESOURCE_NOT_FOUND).
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+
+    ConflictProblem:
+      description: Concurrency version conflict, stale project/proposal version, or client deadline confirmation required (code PLAN_STALE, PROPOSAL_VERSION_CONFLICT, CLIENT_DEADLINE_CONFIRMATION_REQUIRED, PROPOSAL_NOT_APPROVED, PROPOSAL_ALREADY_APPLIED).
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+
+    UnprocessableProblem:
+      description: Semantic invariant failure such as designated client independence violation or missing designated approver (code INDEPENDENT_CLIENT_REQUIRED, INVALID_DEADLINE_APPROVER).
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'

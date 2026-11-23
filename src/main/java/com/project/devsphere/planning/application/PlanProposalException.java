@@ -44,4 +44,32 @@ public class PlanProposalException extends RuntimeException {
     public static PlanProposalException validationFailed(String message) {
         return new PlanProposalException(HttpStatus.BAD_REQUEST, "VALIDATION_FAILED", message);
     }
+
+    public static PlanProposalException independentClientRequired(String message) {
+        return new PlanProposalException(HttpStatus.UNPROCESSABLE_ENTITY, "INDEPENDENT_CLIENT_REQUIRED", message);
+    }
+
+    public static PlanProposalException clientDeadlineConfirmationRequired(String message) {
+        return new PlanProposalException(HttpStatus.CONFLICT, "CLIENT_DEADLINE_CONFIRMATION_REQUIRED", message);
+    }
+
+    public static PlanProposalException proposalNotApproved(String message) {
+        return new PlanProposalException(HttpStatus.CONFLICT, "PROPOSAL_NOT_APPROVED", message);
+    }
+
+    public static PlanProposalException proposalAlreadyApplied(String message) {
+        return new PlanProposalException(HttpStatus.CONFLICT, "PROPOSAL_ALREADY_APPLIED", message);
+    }
+
+    public static PlanProposalException invalidDeadlineApprover(String message) {
+        return new PlanProposalException(HttpStatus.UNPROCESSABLE_ENTITY, "INVALID_DEADLINE_APPROVER", message);
+    }
+
+    public static PlanProposalException proposalNotSolved(String message) {
+        return new PlanProposalException(HttpStatus.CONFLICT, "PROPOSAL_NOT_SOLVED", message);
+    }
+
+    public static PlanProposalException invalidState(String message) {
+        return new PlanProposalException(HttpStatus.CONFLICT, "INVALID_PROPOSAL_STATE", message);
+    }
 }

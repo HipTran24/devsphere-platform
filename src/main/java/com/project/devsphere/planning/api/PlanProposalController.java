@@ -1,7 +1,13 @@
 package com.project.devsphere.planning.api;
 
 import com.project.devsphere.identity.application.SessionService;
+import com.project.devsphere.planning.api.dto.ApplyPlanRequest;
+import com.project.devsphere.planning.api.dto.ApplyPlanResponse;
+import com.project.devsphere.planning.api.dto.ApprovePlanProposalRequest;
 import com.project.devsphere.planning.api.dto.CreatePlanProposalRequest;
+import com.project.devsphere.planning.api.dto.DeadlineConfirmationRequest;
+import com.project.devsphere.planning.api.dto.DeadlineConsentResponse;
+import com.project.devsphere.planning.api.dto.PlanProposalPreviewResponse;
 import com.project.devsphere.planning.api.dto.PlanProposalResponse;
 import com.project.devsphere.planning.api.dto.SolveProposalRequest;
 import com.project.devsphere.planning.api.dto.SolverDiagnosticsResponse;
@@ -93,6 +99,64 @@ public class PlanProposalController {
         return ResponseEntity.ok(response);
     }
 
+    @GetMapping("/{proposalId}/preview")
+    public ResponseEntity<PlanProposalPreviewResponse> previewProposal(
+            @AuthenticationPrincipal SessionService.Principal principal,
+            @PathVariable UUID workspaceId,
+            @PathVariable UUID projectId,
+            @PathVariable UUID proposalId) {
+
+        PlanProposalPreviewResponse response = proposalService.getPreview(principal, workspaceId, projectId, proposalId);
+        return ResponseEntity.ok(response);
+    }
+
+    @PostMapping(path = "/{proposalId}/approve", consumes = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<PlanProposalResponse> approveProposal(
+            @AuthenticationPrincipal SessionService.Principal principal,
+            @PathVariable UUID workspaceId,
+            @PathVariable UUID projectId,
+            @PathVariable UUID proposalId,
+            @Valid @RequestBody ApprovePlanProposalRequest request) {
+
+        PlanProposalResponse response = proposalService.approveProposal(principal, workspaceId, projectId, proposalId, request);
+        return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/{proposalId}/deadline-consent")
+    public ResponseEntity<DeadlineConsentResponse> getDeadlineConsent(
+            @AuthenticationPrincipal SessionService.Principal principal,
+            @PathVariable UUID workspaceId,
+            @PathVariable UUID projectId,
+            @PathVariable UUID proposalId) {
+
+        DeadlineConsentResponse response = proposalService.getDeadlineConsent(principal, workspaceId, projectId, proposalId);
+        return ResponseEntity.ok(response);
+    }
+
+    @PostMapping(path = "/{proposalId}/deadline-confirmation", consumes = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<DeadlineConsentResponse> confirmDeadline(
+            @AuthenticationPrincipal SessionService.Principal principal,
+            @PathVariable UUID workspaceId,
+            @PathVariable UUID projectId,
+            @PathVariable UUID proposalId,
+            @Valid @RequestBody DeadlineConfirmationRequest request) {
+
+        DeadlineConsentResponse response = proposalService.confirmDeadline(principal, workspaceId, projectId, proposalId, request);
+        return ResponseEntity.ok(response);
+    }
+
+    @PostMapping(path = "/{proposalId}/apply", consumes = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<ApplyPlanResponse> applyProposal(
+            @AuthenticationPrincipal SessionService.Principal principal,
+            @PathVariable UUID workspaceId,
+            @PathVariable UUID projectId,
+            @PathVariable UUID proposalId,
+            @Valid @RequestBody ApplyPlanRequest request) {
+
+        ApplyPlanResponse response = proposalService.applyProposal(principal, workspaceId, projectId, proposalId, request);
+        return ResponseEntity.ok(response);
+    }
+
     @ExceptionHandler(PlanProposalException.class)
     public ResponseEntity<ProblemDetail> handlePlanProposalException(PlanProposalException ex) {
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(ex.getStatus(), ex.getMessage());
@@ -131,6 +195,13 @@ public class PlanProposalController {
         } else if (msg.contains("Proposal starts DRAFT") || msg.contains("Applied proposal is immutable")) {
             status = HttpStatus.CONFLICT;
             code = "PROPOSAL_STATE_INVALID";
+        } else if (msg.contains("Deadline requires independent designated CLIENT confirmation")
+                || msg.contains("Committed deadline requires newly applied confirmed baseline")) {
+            status = HttpStatus.CONFLICT;
+            code = "CLIENT_DEADLINE_CONFIRMATION_REQUIRED";
+        } else if (msg.contains("Frozen schedule entry must be copied unchanged into a new baseline")) {
+            status = HttpStatus.CONFLICT;
+            code = "FROZEN_SCHEDULE_MODIFIED";
         }
 
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(status, msg);
