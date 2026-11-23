@@ -48,6 +48,7 @@ public class AccountAdministrationService {
 
     private static final java.util.regex.Pattern TRACE_ID_PATTERN = java.util.regex.Pattern.compile("^[a-zA-Z0-9._-]{1,64}$");
     private static final int MAX_SUMMARY_GROUPS = 200;
+    public static final int MAX_EXPORT_ROWS = 5000;
 
     private final JdbcTemplate jdbcTemplate;
     private final TransactionTemplate transactionTemplate;
@@ -375,6 +376,23 @@ public class AccountAdministrationService {
         Long total = jdbcTemplate.queryForObject(
                 "SELECT count(*) FROM audit_logs" + where.sql(), Long.class, where.params().toArray());
         return new AuditSummaryResponse(where.effectiveFrom(), where.effectiveTo(), total != null ? total : 0L, actions);
+    }
+
+    /**
+     * Returns at most {@link #MAX_EXPORT_ROWS} audit events matching the filter, newest first,
+     * using the same redacted projection as the paginated search.
+     */
+    public List<AdminAuditLogResponse> exportAuditLogs(AuditLogFilter filter) {
+        AuditWhere where = buildAuditWhere(filter);
+        List<Object> params = new ArrayList<>(where.params());
+        params.add(MAX_EXPORT_ROWS);
+        return jdbcTemplate.query(
+                "SELECT id, workspace_id, project_id, actor_id, action, entity_type, entity_id, " +
+                        "before_json, after_json, occurred_at, trace_id FROM audit_logs" +
+                        where.sql() + " ORDER BY occurred_at DESC, id ASC LIMIT ?",
+                (rs, rowNum) -> mapToAdminAuditLogResponse(rs),
+                params.toArray()
+        );
     }
 
     /**
