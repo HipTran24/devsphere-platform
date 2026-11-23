@@ -124,7 +124,7 @@ class AttachmentServiceTest {
         saved.setVisibility(Attachment.Visibility.INTERNAL);
         when(attachmentRepository.save(any(Attachment.class))).thenReturn(saved);
 
-        when(storageProvider.generatePresignedUploadUrl(anyString(), eq("application/pdf"), eq(900L)))
+        when(storageProvider.generatePresignedUploadUrl(anyString(), eq("application/pdf"), eq(300L)))
                 .thenReturn("https://storage.devsphere.local/upload/spec.pdf");
 
         UploadRequestResponse response = attachmentService.requestUpload(principal, workspaceId, projectId, command);
@@ -203,7 +203,7 @@ class AttachmentServiceTest {
         when(jdbcTemplate.queryForObject(contains("SELECT ds_has_project_role(?, ?, 'VIEWER')"), eq(Boolean.class), eq(projectId), eq(callerUserId)))
                 .thenReturn(false);
 
-        when(storageProvider.generatePresignedDownloadUrl("keys/clean.pdf", 900L))
+        when(storageProvider.generatePresignedDownloadUrl("keys/clean.pdf", 300L))
                 .thenReturn("https://storage.devsphere.local/download/keys/clean.pdf");
 
         DownloadAttachmentResponse response = attachmentService.requestDownload(principal, workspaceId, projectId, attachmentId);

@@ -2,7 +2,9 @@ package com.project.devsphere.administration.application;
 
 import com.project.devsphere.administration.domain.AuditLog;
 import com.project.devsphere.administration.infrastructure.persistence.AuditLogRepository;
+import com.project.devsphere.operations.infrastructure.metrics.OperationsMetrics;
 import org.slf4j.MDC;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -36,10 +38,17 @@ public class AuditLogService {
 
     private final AuditLogRepository auditLogRepository;
     private final JdbcTemplate jdbcTemplate;
+    private OperationsMetrics metrics;
 
     public AuditLogService(AuditLogRepository auditLogRepository, JdbcTemplate jdbcTemplate) {
         this.auditLogRepository = Objects.requireNonNull(auditLogRepository, "auditLogRepository must not be null");
         this.jdbcTemplate = Objects.requireNonNull(jdbcTemplate, "jdbcTemplate must not be null");
+    }
+
+    /** Optional telemetry counting devsphere_audit_events_total. */
+    @Autowired(required = false)
+    public void setOperationsMetrics(OperationsMetrics metrics) {
+        this.metrics = metrics;
     }
 
     /** Immutable description of one audit event. */
@@ -103,7 +112,11 @@ public class AuditLogService {
         log.setMetadata(metadata);
         log.setOccurredAt(Instant.now());
         log.setTraceId(currentTraceId());
-        return auditLogRepository.save(log);
+        AuditLog saved = auditLogRepository.save(log);
+        if (metrics != null) {
+            metrics.recordAuditEvent(entityType);
+        }
+        return saved;
     }
 
     /** Trace identifier bound to the current thread when it is safe to persist, otherwise {@code null}. */

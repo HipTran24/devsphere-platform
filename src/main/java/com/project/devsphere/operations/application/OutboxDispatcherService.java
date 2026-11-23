@@ -6,9 +6,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.project.devsphere.operations.domain.BackgroundJob;
+import com.project.devsphere.operations.infrastructure.metrics.OperationsMetrics;
 import com.project.devsphere.operations.infrastructure.persistence.JobQueue;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
@@ -47,6 +49,7 @@ public class OutboxDispatcherService {
     private final Map<BackgroundJob.JobKind, JobHandler> handlers;
     private final TransactionTemplate transactionTemplate;
     private final String workerId;
+    private OperationsMetrics metrics;
 
     public OutboxDispatcherService(
             JobQueue jobQueue,
@@ -66,6 +69,12 @@ public class OutboxDispatcherService {
         this.transactionTemplate = new TransactionTemplate(transactionManager);
         this.transactionTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
         this.workerId = "dispatcher-" + UUID.randomUUID().toString().substring(0, 8);
+    }
+
+    /** Optional telemetry; the dispatcher works unchanged without a meter registry. */
+    @Autowired(required = false)
+    public void setOperationsMetrics(OperationsMetrics metrics) {
+        this.metrics = metrics;
     }
 
     /** Outcome of a dispatch run. */
@@ -124,15 +133,22 @@ public class OutboxDispatcherService {
                 progress = true;
                 counters.claimed++;
                 counters.processedByKind.merge(kind.name(), 1, Integer::sum);
-                process(claimed.get(), counters);
+                process(claimed.get(), kind, counters);
             }
         }
         long durationMillis = (System.nanoTime() - started) / 1_000_000;
+        if (metrics != null && counters.claimed > 0) {
+            try {
+                metrics.updateQueue(jobQueue.stats());
+            } catch (RuntimeException ex) {
+                log.debug("Queue gauges not refreshed after dispatch", ex);
+            }
+        }
         return new DispatchSummary(counters.claimed, counters.succeeded, counters.failed, counters.deadLettered,
                 Collections.unmodifiableMap(new LinkedHashMap<>(counters.processedByKind)), durationMillis);
     }
 
-    private void process(UUID jobId, Counters counters) {
+    private void process(UUID jobId, BackgroundJob.JobKind kind, Counters counters) {
         try {
             transactionTemplate.executeWithoutResult(status -> {
                 JobQueue.LeasedJob leased = jobQueue.findLeased(jobId, workerId)
@@ -144,8 +160,9 @@ public class OutboxDispatcherService {
                 jobQueue.complete(jobId, workerId, toJson(result.details()));
             });
             counters.succeeded++;
+            record(kind, "success");
         } catch (RuntimeException failure) {
-            recordFailure(jobId, currentAttempts(jobId), failure, counters);
+            recordFailure(jobId, kind, currentAttempts(jobId), failure, counters);
         }
     }
 
@@ -160,7 +177,7 @@ public class OutboxDispatcherService {
         }
     }
 
-    private void recordFailure(UUID jobId, int attempts, RuntimeException failure, Counters counters) {
+    private void recordFailure(UUID jobId, BackgroundJob.JobKind kind, int attempts, RuntimeException failure, Counters counters) {
         String error = describe(failure);
         boolean permanent = failure instanceof NonRetryableJobException || attempts >= JobQueue.MAX_ATTEMPTS;
         try {
@@ -171,10 +188,21 @@ public class OutboxDispatcherService {
                 jobQueue.fail(jobId, workerId, error, backoffSeconds(attempts));
             }
             counters.failed++;
+            record(kind, permanent ? "dead_letter" : "retry");
             log.warn("Background job {} failed (attempt {}, permanent={}): {}", jobId, attempts, permanent, error);
         } catch (IllegalStateException leaseLost) {
             counters.failed++;
             log.warn("Background job {} failed after its lease was lost: {}", jobId, error);
+        }
+    }
+
+    private void record(BackgroundJob.JobKind kind, String outcome) {
+        if (metrics == null) {
+            return;
+        }
+        metrics.recordOutboxDispatch(kind, outcome);
+        if (kind == BackgroundJob.JobKind.WEBHOOK_RETRY && !"success".equals(outcome)) {
+            metrics.recordWebhookFailure("retry_" + outcome);
         }
     }
 

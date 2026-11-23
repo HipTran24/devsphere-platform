@@ -56,8 +56,14 @@ public class SessionSecurityConfiguration {
     private static final RequestMatcher CLIENT_PORTAL_POST_ENDPOINTS = ROUTES.matcher(HttpMethod.POST, "/api/v1/client-portal/**");
     private static final RequestMatcher CLIENT_PORTAL_PUT_ENDPOINTS = ROUTES.matcher(HttpMethod.PUT, "/api/v1/client-portal/**");
     private static final RequestMatcher CLIENT_PORTAL_PATCH_ENDPOINTS = ROUTES.matcher(HttpMethod.PATCH, "/api/v1/client-portal/**");
+    private static final RequestMatcher ACTUATOR_PUBLIC_HEALTH = new OrRequestMatcher(
+            ROUTES.matcher(HttpMethod.GET, "/actuator/health"),
+            ROUTES.matcher(HttpMethod.GET, "/actuator/health/liveness"),
+            ROUTES.matcher(HttpMethod.GET, "/actuator/health/readiness"));
+    private static final RequestMatcher ACTUATOR_ENDPOINTS = ROUTES.matcher("/actuator/**");
     private static final RequestMatcher BEARER_ENDPOINTS =
-            new OrRequestMatcher(CURRENT_USER, LIST_SESSIONS, REVOKE_SESSION, ADMIN_ENDPOINTS, WORKSPACE_ENDPOINTS, CLIENT_PORTAL_ENDPOINTS);
+            new OrRequestMatcher(CURRENT_USER, LIST_SESSIONS, REVOKE_SESSION, ADMIN_ENDPOINTS, WORKSPACE_ENDPOINTS, CLIENT_PORTAL_ENDPOINTS,
+                    ACTUATOR_ENDPOINTS);
 
     @Bean
     public SecurityFilterChain securityFilterChain(
@@ -123,6 +129,8 @@ public class SessionSecurityConfiguration {
                 .requestMatchers(HttpMethod.POST, "/api/v1/auth/refresh").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/v1/auth/logout").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/v1/auth/csrf").permitAll()
+                .requestMatchers(ACTUATOR_PUBLIC_HEALTH).permitAll()
+                .requestMatchers(ACTUATOR_ENDPOINTS).hasRole("ADMIN")
                 .requestMatchers(OPERATIONS_ADMIN_ENDPOINTS).hasRole("ADMIN")
                 .requestMatchers(ADMIN_ENDPOINTS).hasRole("ADMIN")
                 .requestMatchers(BEARER_ENDPOINTS).authenticated()
