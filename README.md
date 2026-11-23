@@ -6,8 +6,8 @@
 [![Spring Boot](https://img.shields.io/badge/Spring_Boot-4.1.2-6DB33F?style=for-the-badge&logo=springboot&logoColor=white)](https://spring.io/projects/spring-boot)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-18.7-4169E1?style=for-the-badge&logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 [![Next.js](https://img.shields.io/badge/Next.js-16.4.5_Turbopack-000000?style=for-the-badge&logo=next.js&logoColor=white)](https://nextjs.org/)
-[![Tests](https://img.shields.io/badge/Backend_Tests-706_PASS_|_0_FAIL_|_0_SKIP-success?style=for-the-badge&logo=junit5&logoColor=white)](#kiểm-thử--nghiệm-thu-6-cổng)
-[![Playwright E2E](https://img.shields.io/badge/Playwright_E2E-14_PASS-2EAD33?style=for-the-badge&logo=playwright&logoColor=white)](#kiểm-thử--nghiệm-thu-6-cổng)
+[![Tests](https://img.shields.io/badge/Backend_Tests-841_PASS_|_0_FAIL_|_0_SKIP-success?style=for-the-badge&logo=junit5&logoColor=white)](#kiểm-thử--nghiệm-thu-7-cổng)
+[![Playwright E2E](https://img.shields.io/badge/Playwright_E2E-24_PASS-2EAD33?style=for-the-badge&logo=playwright&logoColor=white)](#kiểm-thử--nghiệm-thu-7-cổng)
 [![OpenAPI 3.1](https://img.shields.io/badge/OpenAPI-3.1.0-85EA2D?style=for-the-badge&logo=openapiinitiative&logoColor=black)](docs/api)
 
 ---
@@ -178,20 +178,25 @@ npm --prefix frontend run build
 # Gate 5: Frontend Playwright E2E Tests
 npm --prefix frontend run test:e2e
 
-# Gate 6: Python AI Workflow Harness Tests
+# Gate 6: Python AI & Infrastructure Tests
 python3 -m unittest discover -s tests/ai -v
+python3 -m unittest discover -s tests/infra -v
+
+# Gate 7: Automated Backup & Restore Disaster Recovery Drill
+./infra/backup/restore-verify.sh
 ```
 
 ### Kết quả Kiểm thử Thực tế
 
 | Cổng kiểm thử | Phạm vi kiểm tra | Kết quả thực tế | Trạng thái |
 |:---|---|:---:|:---:|
-| **Gate 1** | Backend Unit & Integration Tests (PostgreSQL 18.7) | **706 / 706 PASS** (0 failures, 0 skipped) | ✅ **PASS** |
-| **Gate 2** | Frontend Unit Tests | **12 / 12 PASS** | ✅ **PASS** |
+| **Gate 1** | Backend Unit & Integration Tests (PostgreSQL 18.7) | **841 / 841 PASS** (0 failures, 0 skipped) | ✅ **PASS** |
+| **Gate 2** | Frontend Unit & Accessibility Tests | **17 / 17 PASS** | ✅ **PASS** |
 | **Gate 3** | Frontend ESLint Code Style | **0 errors, 0 warnings** | ✅ **PASS** |
-| **Gate 4** | Next.js Production Build | **11/11 static pages generated** | ✅ **PASS** |
-| **Gate 5** | Playwright E2E User Flows | **14 / 14 PASS** (34.8s) | ✅ **PASS** |
-| **Gate 6** | Python AI Workflow Multi-role Runner | **35 / 35 PASS** (10.0s) | ✅ **PASS** |
+| **Gate 4** | Next.js Production Build | **12 / 12 static pages generated** | ✅ **PASS** |
+| **Gate 5** | Playwright E2E User Flows & Accessibility | **24 / 24 PASS** (0 failures, 0 skipped) | ✅ **PASS** |
+| **Gate 6** | Python AI Workflow & Infra Tests | **43 / 43 PASS** (35 AI + 8 Infra) | ✅ **PASS** |
+| **Gate 7** | PostgreSQL AES-256 Backup & Restore Drill | **37 tables, Flyway v10, RTO 1s** | ✅ **PASS** |
 
 ---
 
@@ -207,6 +212,7 @@ Toàn bộ API được chuẩn hóa theo định dạng OpenAPI 3.1.0 và mô h
 * 📈 [Planning Proposals & Capacity API](docs/api/planning-solver.openapi.yaml)
 * 🗼 [Control Tower, CPM & Monitoring API](docs/api/monitoring-openapi.yaml)
 * 💬 [Collaboration, S3 Storage, AI Gate & Reports API](docs/api/collaboration-reports.openapi.yaml)
+* ⚙️ [Operations Admin, Audit & Quartz Jobs API](docs/api/operations-admin.openapi.yaml)
 
 ---
 

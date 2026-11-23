@@ -1,0 +1,250 @@
+openapi: 3.1.0
+info:
+  title: DevSphere Operations & Background Jobs Admin API
+  version: 1.0.0
+  description: Operations administration endpoints for audit logs, background jobs, and Quartz scheduler control in DevSphere.
+servers:
+  - url: /api/v1/admin/operations
+    description: Operations Admin base path
+
+security:
+  - BearerAuth: []
+
+paths:
+  /audit/summary:
+    get:
+      summary: Get audit log summary statistics
+      operationId: getAuditSummary
+      responses:
+        '200':
+          description: Summary of audit log activity
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditSummaryResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /audit/export:
+    get:
+      summary: Export audit logs to sanitized CSV
+      operationId: exportAuditCsv
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 1000
+      responses:
+        '200':
+          description: Sanitized CSV file stream
+          content:
+            text/csv:
+              schema:
+                type: string
+                format: binary
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /jobs/stats:
+    get:
+      summary: Get background job queue statistics
+      operationId: getJobStats
+      responses:
+        '200':
+          description: Current job counts by status and kind
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobStatsResponse'
+
+  /jobs/dead-letters:
+    get:
+      summary: List dead-letter background jobs
+      operationId: listDeadLetters
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        '200':
+          description: List of permanently failed jobs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/JobRecord'
+
+  /jobs/retry-failed:
+    post:
+      summary: Re-queue failed background jobs for execution
+      operationId: retryFailedJobs
+      responses:
+        '200':
+          description: Count of re-queued jobs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  retriedCount:
+                    type: integer
+
+  /jobs/{jobName}/trigger:
+    post:
+      summary: Trigger immediate execution of a registered Quartz job
+      operationId: triggerQuartzJob
+      parameters:
+        - name: jobName
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Trigger status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobActionResponse'
+
+  /jobs/{jobName}/pause:
+    post:
+      summary: Pause a Quartz job trigger
+      operationId: pauseQuartzJob
+      parameters:
+        - name: jobName
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          $ref: '#/components/responses/JobActionSuccess'
+
+  /jobs/{jobName}/resume:
+    post:
+      summary: Resume a paused Quartz job trigger
+      operationId: resumeQuartzJob
+      parameters:
+        - name: jobName
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          $ref: '#/components/responses/JobActionSuccess'
+
+  /quartz/jobs:
+    get:
+      summary: List all registered Quartz jobs and triggers
+      operationId: listQuartzJobs
+      responses:
+        '200':
+          description: Array of Quartz job details
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/QuartzJobDetail'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  responses:
+    Unauthorized:
+      description: Authentication required
+    Forbidden:
+      description: Insufficient privileges (requires ROLE_ADMIN)
+    JobActionSuccess:
+      description: Action completed successfully
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/JobActionResponse'
+
+  schemas:
+    AuditSummaryResponse:
+      type: object
+      properties:
+        totalCount:
+          type: integer
+        last24HoursCount:
+          type: integer
+        actionCounts:
+          type: object
+          additionalProperties:
+            type: integer
+
+    JobStatsResponse:
+      type: object
+      properties:
+        queued:
+          type: integer
+        running:
+          type: integer
+        completed:
+          type: integer
+        failed:
+          type: integer
+        deadLetter:
+          type: integer
+
+    JobRecord:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        kind:
+          type: string
+        status:
+          type: string
+        attemptCount:
+          type: integer
+        errorMessage:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    JobActionResponse:
+      type: object
+      properties:
+        jobName:
+          type: string
+        status:
+          type: string
+        message:
+          type: string
+
+    QuartzJobDetail:
+      type: object
+      properties:
+        jobName:
+          type: string
+        groupName:
+          type: string
+        triggerState:
+          type: string
+        nextFireTime:
+          type: string
+          format: date-time
+          nullable: true
+        previousFireTime:
+          type: string
+          format: date-time
+          nullable: true
