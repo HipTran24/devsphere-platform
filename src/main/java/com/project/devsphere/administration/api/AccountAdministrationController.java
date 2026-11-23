@@ -9,6 +9,7 @@ import com.project.devsphere.administration.application.AdminException;
 import com.project.devsphere.identity.application.AccessPolicy;
 import com.project.devsphere.identity.application.SessionService;
 import com.project.devsphere.identity.domain.User;
+import com.project.devsphere.operations.api.dto.AuditSummaryResponse;
 import jakarta.validation.Valid;
 import org.springframework.http.CacheControl;
 import org.springframework.http.HttpStatus;
@@ -115,6 +116,22 @@ public class AccountAdministrationController {
                         actorId, action, entityType, workspaceId, projectId, entityId, traceId, fromInstant, toInstant),
                 sort
         );
+
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.noStore())
+                .body(response);
+    }
+
+    @GetMapping("/audit-logs/summary")
+    public ResponseEntity<AuditSummaryResponse> getAuditLogSummary(
+            @AuthenticationPrincipal SessionService.Principal principal,
+            @RequestParam(required = false) String from,
+            @RequestParam(required = false) String to) {
+
+        accessPolicy.requireSystemAdmin(principal);
+
+        AuditSummaryResponse response = accountAdministrationService.summarizeAuditLogs(
+                parseInstant(from, "from"), parseInstant(to, "to"));
 
         return ResponseEntity.ok()
                 .cacheControl(CacheControl.noStore())

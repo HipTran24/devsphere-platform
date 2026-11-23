@@ -9,6 +9,7 @@ import com.project.devsphere.administration.api.dto.UserStatusUpdateRequest;
 import com.project.devsphere.identity.application.AccessPolicy;
 import com.project.devsphere.identity.application.SessionService;
 import com.project.devsphere.identity.domain.User;
+import com.project.devsphere.operations.api.dto.AuditSummaryResponse;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -46,6 +47,7 @@ public class AccountAdministrationService {
     );
 
     private static final java.util.regex.Pattern TRACE_ID_PATTERN = java.util.regex.Pattern.compile("^[a-zA-Z0-9._-]{1,64}$");
+    private static final int MAX_SUMMARY_GROUPS = 200;
 
     private final JdbcTemplate jdbcTemplate;
     private final TransactionTemplate transactionTemplate;
@@ -359,6 +361,20 @@ public class AccountAdministrationService {
         );
 
         return new AdminPageResponse<>(logs, page, size, totalElements, totalPages, effectiveFrom, effectiveTo);
+    }
+
+    /** Counts audit events per action inside the (validated) window, most frequent first. */
+    public AuditSummaryResponse summarizeAuditLogs(Instant from, Instant to) {
+        AuditWhere where = buildAuditWhere(AuditLogFilter.range(from, to));
+        List<AuditSummaryResponse.ActionCount> actions = jdbcTemplate.query(
+                "SELECT action, count(*) AS events FROM audit_logs" + where.sql() +
+                        " GROUP BY action ORDER BY events DESC, action ASC LIMIT " + MAX_SUMMARY_GROUPS,
+                (rs, rowNum) -> new AuditSummaryResponse.ActionCount(rs.getString("action"), rs.getLong("events")),
+                where.params().toArray()
+        );
+        Long total = jdbcTemplate.queryForObject(
+                "SELECT count(*) FROM audit_logs" + where.sql(), Long.class, where.params().toArray());
+        return new AuditSummaryResponse(where.effectiveFrom(), where.effectiveTo(), total != null ? total : 0L, actions);
     }
 
     /**
