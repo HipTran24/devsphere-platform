@@ -6,6 +6,7 @@ import com.project.devsphere.gitintegration.domain.GitHubEvent;
 import com.project.devsphere.gitintegration.domain.GitHubRepository;
 import com.project.devsphere.gitintegration.infrastructure.persistence.GitHubEventRepository;
 import com.project.devsphere.gitintegration.infrastructure.persistence.GitHubRepositoryRepository;
+import com.project.devsphere.operations.infrastructure.metrics.OperationsMetrics;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -32,6 +33,7 @@ public class GitHubWebhookService {
     private final GitHubEventRepository eventRepository;
     private final GitHubRepositoryRepository repositoryRepository;
     private final ObjectMapper objectMapper;
+    private OperationsMetrics metrics;
 
     @Value("${devsphere.github.webhook-secret:}")
     private String defaultWebhookSecret = "";
@@ -52,12 +54,29 @@ public class GitHubWebhookService {
         this(eventRepository, repositoryRepository, null);
     }
 
+    /** Optional telemetry counting rejected deliveries in devsphere_webhook_failures_total. */
+    @Autowired(required = false)
+    public void setOperationsMetrics(OperationsMetrics metrics) {
+        this.metrics = metrics;
+    }
+
     /**
      * Verifies the GitHub HMAC-SHA256 signature against the raw payload bytes.
      * Uses constant-time MessageDigest.isEqual comparison to eliminate timing attacks.
      * Throws 401 WEBHOOK_SIGNATURE_INVALID if missing or invalid.
      */
     public void verifySignature(byte[] rawPayload, String signatureHeader, String secret) {
+        try {
+            verifySignatureInternal(rawPayload, signatureHeader, secret);
+        } catch (GitHubException ex) {
+            if (metrics != null) {
+                metrics.recordWebhookFailure("invalid_signature");
+            }
+            throw ex;
+        }
+    }
+
+    private void verifySignatureInternal(byte[] rawPayload, String signatureHeader, String secret) {
         if (signatureHeader == null || signatureHeader.isBlank()) {
             throw GitHubException.webhookSignatureInvalid("Missing X-Hub-Signature-256 header");
         }
