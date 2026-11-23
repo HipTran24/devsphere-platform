@@ -5,9 +5,14 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.sql.Timestamp;
+import java.time.Instant;
 import java.util.EnumSet;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.UUID;
 
 /** Internal worker adapter with expiring leases. Delivery is at least once;
@@ -145,6 +150,45 @@ public class JobQueue {
                 """, leaseSeconds, id, worker) == 1;
     }
 
+    /** Atomically re-queues a FAILED dispatchable job with a fresh attempt budget. */
+    @Transactional
+    public boolean retryFailed(UUID id) {
+        return jdbc.update("""
+                update background_jobs set status='QUEUED',attempts=0,scheduled_at=now(),last_error=null,
+                  started_at=null,finished_at=null,locked_by=null,locked_until=null
+                where id=? and status='FAILED'
+                  and job_kind not in ('IDEMPOTENCY', 'AUTH_VERIFY_EMAIL', 'AUTH_RESET_PASSWORD')
+                """, id) == 1;
+    }
+
+    /** Aggregated queue counters for operations dashboards. */
+    @Transactional(readOnly = true)
+    public Stats stats() {
+        Map<String, Map<String, Long>> byKind = new TreeMap<>();
+        Map<String, Long> byStatus = new LinkedHashMap<>();
+        for (BackgroundJob.Status status : BackgroundJob.Status.values()) {
+            byStatus.put(status.name(), 0L);
+        }
+        jdbc.query("select job_kind,status,count(*) as jobs from background_jobs group by job_kind,status", rs -> {
+            String kind = rs.getString("job_kind");
+            String status = rs.getString("status");
+            long jobs = rs.getLong("jobs");
+            byKind.computeIfAbsent(kind, k -> new TreeMap<>()).put(status, jobs);
+            byStatus.merge(status, jobs, Long::sum);
+        });
+        Map<String, Object> extra = jdbc.queryForMap("""
+                select count(*) filter (where status='RUNNING' and locked_until<=now()) as expired,
+                       count(*) filter (where status='FAILED' and attempts>=? and job_kind not in ('IDEMPOTENCY','AUTH_VERIFY_EMAIL','AUTH_RESET_PASSWORD')) as dead,
+                       min(scheduled_at) filter (where status='QUEUED') as oldest
+                from background_jobs
+                """, MAX_ATTEMPTS);
+        Timestamp oldest = (Timestamp) extra.get("oldest");
+        return new Stats(byKind, byStatus,
+                ((Number) extra.get("expired")).longValue(),
+                ((Number) extra.get("dead")).longValue(),
+                oldest == null ? null : oldest.toInstant());
+    }
+
     public static String truncateError(String error) {
         String value = error == null || error.isBlank() ? "UNKNOWN_ERROR" : error;
         return value.length() > MAX_ERROR_LENGTH ? value.substring(0, MAX_ERROR_LENGTH) : value;
@@ -172,5 +216,18 @@ public class JobQueue {
             String idempotencyKey,
             String payloadJson,
             int attempts) {
+    }
+
+    /** Queue counters grouped by kind and status plus lease health indicators. */
+    public record Stats(
+            Map<String, Map<String, Long>> countsByKindAndStatus,
+            Map<String, Long> totalsByStatus,
+            long expiredLeases,
+            long deadLettered,
+            Instant oldestQueuedAt) {
+
+        public long total(BackgroundJob.Status status) {
+            return totalsByStatus.getOrDefault(status.name(), 0L);
+        }
     }
 }
