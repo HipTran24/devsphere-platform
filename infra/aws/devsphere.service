@@ -19,7 +19,6 @@ TimeoutStopSec=120
 # Sandboxing for the unit itself (containers keep their own isolation).
 NoNewPrivileges=yes
 PrivateTmp=yes
-ProtectHome=yes
 ProtectSystem=full
 
 [Install]
