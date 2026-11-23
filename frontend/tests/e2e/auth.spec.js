@@ -102,3 +102,13 @@ test('Google button starts only a clearly labeled frontend demo', async ({page})
     await expect(page.getByText('Frontend demo · No real Google sign-in, account or server session.',{exact:true})).toBeVisible();
     await expect(page.getByText('Google Demo',{exact:true})).toBeVisible();
 });
+
+test('terms link opens a separate page and preserves entered registration data', async ({page}) => {
+    await page.goto('/register');
+    await page.getByLabel('Full name',{exact:true}).fill('Demo');
+    const popupPromise=page.waitForEvent('popup');
+    await page.getByRole('link',{name:'Terms of Service',exact:true}).click();
+    const popup=await popupPromise;
+    await expect(popup.getByRole('heading',{name:'Terms of Service',exact:true})).toBeVisible();
+    await expect(page.getByLabel('Full name',{exact:true})).toHaveValue('Demo');
+});

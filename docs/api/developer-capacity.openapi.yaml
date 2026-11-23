@@ -1,0 +1,675 @@
+openapi: 3.1.0
+info:
+  title: DevSphere Developer Skills & Capacity API
+  version: 1.0.0
+  description: >
+    RESTful API endpoints for managing developer skills matrices, weekly working calendars,
+    effective capacity periods, time-off intervals, and compiled working availability.
+servers:
+  - url: /api/v1
+paths:
+  /workspaces/{workspaceId}/projects/{projectId}/resources:
+    parameters:
+      - name: workspaceId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: projectId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    put:
+      summary: Create or replace a developer capacity record
+      description: >
+        Creates or replaces an effective developer capacity record.
+        - PM alone writes capacity configurations.
+        - Requires the target user to be an active DEVELOPER on the project.
+        - Validates weekly slots and non-overlapping time off.
+        - Returns 201 Created on insert, 200 OK on replacement.
+      operationId: putCapacity
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PutResourceCapacityRequest'
+      responses:
+        '200':
+          description: Capacity record updated successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResourceCapacityResponse'
+        '201':
+          description: Capacity record created successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResourceCapacityResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+    get:
+      summary: List developer capacities
+      description: >
+        Lists developer capacity records for the project.
+        - PM may list all project capacities.
+        - Developers may only list their own records.
+      operationId: listCapacities
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: developerId
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - name: from
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+        - name: to
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: List of capacity records.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ResourceCapacityResponse'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /workspaces/{workspaceId}/projects/{projectId}/resources/{developerId}/effective-changes:
+    parameters:
+      - name: workspaceId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: projectId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: developerId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      summary: Effective capacity change
+      description: >
+        Atomically closes a currently open-ended capacity record at effectiveFrom and
+        inserts a new open-ended capacity record starting from that date.
+        - Guarded by PM role.
+        - Enforces optimistic locking on project and superseded capacity versions.
+      operationId: effectiveChange
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EffectiveCapacityChangeRequest'
+      responses:
+        '200':
+          description: New capacity record created and prior record closed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResourceCapacityResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  /workspaces/{workspaceId}/projects/{projectId}/time-off:
+    parameters:
+      - name: workspaceId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: projectId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      summary: Add time off to developer capacities
+      description: >
+        Appends a time-off interval to all capacity records intersecting the requested range.
+        - Guarded by PM role.
+        - Rejects overlapping intervals.
+      operationId: addTimeOff
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddTimeOffRequest'
+      responses:
+        '200':
+          description: Time off recorded successfully.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  /workspaces/{workspaceId}/projects/{projectId}/resources/{developerId}/calendar:
+    parameters:
+      - name: workspaceId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: projectId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: developerId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      summary: Get compiled working calendar
+      description: >
+        Retrieves compiled daily working availability, segments, and budget minutes
+        in the project timezone for a given developer over an optional date range.
+        - PM may read any developer's calendar.
+        - Developers may only read their own calendar.
+      operationId: getCalendar
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: from
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+        - name: to
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Compiled working calendar.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResourceCalendarResponse'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    SkillLevel:
+      type: object
+      required:
+        - skill
+        - level
+      properties:
+        skill:
+          type: string
+          example: java
+        level:
+          type: integer
+          minimum: 1
+          maximum: 5
+          example: 4
+
+    WeeklySlot:
+      type: object
+      required:
+        - dayOfWeek
+        - startMinute
+        - endMinute
+      properties:
+        dayOfWeek:
+          type: integer
+          minimum: 1
+          maximum: 7
+          example: 1
+        startMinute:
+          type: integer
+          minimum: 0
+          maximum: 1439
+          example: 540
+        endMinute:
+          type: integer
+          minimum: 1
+          maximum: 1440
+          example: 1020
+
+    TimeOff:
+      type: object
+      required:
+        - startAt
+        - endAt
+      properties:
+        startAt:
+          type: string
+          format: date-time
+        endAt:
+          type: string
+          format: date-time
+
+    CapacityVersionRef:
+      type: object
+      required:
+        - id
+        - expectedVersion
+      properties:
+        id:
+          type: string
+          format: uuid
+        expectedVersion:
+          type: integer
+          format: int64
+
+    PutResourceCapacityRequest:
+      type: object
+      required:
+        - developerId
+        - effectiveFrom
+        - minutesPerDay
+        - allocationPct
+        - expectedProjectVersion
+      properties:
+        developerId:
+          type: string
+          format: uuid
+        effectiveFrom:
+          type: string
+          format: date
+        effectiveTo:
+          type: string
+          format: date
+          nullable: true
+        skillLevels:
+          type: array
+          items:
+            $ref: '#/components/schemas/SkillLevel'
+        weeklySlots:
+          type: array
+          items:
+            $ref: '#/components/schemas/WeeklySlot'
+        timeOff:
+          type: array
+          items:
+            $ref: '#/components/schemas/TimeOff'
+        minutesPerDay:
+          type: integer
+          minimum: 1
+          maximum: 1440
+          example: 480
+        allocationPct:
+          type: number
+          format: decimal
+          minimum: 0.01
+          maximum: 100.00
+          example: 100.00
+        expectedProjectVersion:
+          type: integer
+          format: int64
+        expectedCapacityVersion:
+          type: integer
+          format: int64
+          nullable: true
+
+    EffectiveCapacityChangeRequest:
+      type: object
+      required:
+        - supersedesCapacityId
+        - expectedCapacityVersion
+        - effectiveFrom
+        - minutesPerDay
+        - allocationPct
+        - expectedProjectVersion
+      properties:
+        supersedesCapacityId:
+          type: string
+          format: uuid
+        expectedCapacityVersion:
+          type: integer
+          format: int64
+        effectiveFrom:
+          type: string
+          format: date
+        skillLevels:
+          type: array
+          items:
+            $ref: '#/components/schemas/SkillLevel'
+        weeklySlots:
+          type: array
+          items:
+            $ref: '#/components/schemas/WeeklySlot'
+        timeOff:
+          type: array
+          items:
+            $ref: '#/components/schemas/TimeOff'
+        minutesPerDay:
+          type: integer
+          minimum: 1
+          maximum: 1440
+          example: 480
+        allocationPct:
+          type: number
+          format: decimal
+          minimum: 0.01
+          maximum: 100.00
+          example: 80.00
+        reason:
+          type: string
+          nullable: true
+        expectedProjectVersion:
+          type: integer
+          format: int64
+
+    AddTimeOffRequest:
+      type: object
+      required:
+        - developerId
+        - startAt
+        - endAt
+        - expectedProjectVersion
+      properties:
+        developerId:
+          type: string
+          format: uuid
+        startAt:
+          type: string
+          format: date-time
+        endAt:
+          type: string
+          format: date-time
+        capacityVersions:
+          type: array
+          items:
+            $ref: '#/components/schemas/CapacityVersionRef'
+        reason:
+          type: string
+          nullable: true
+        expectedProjectVersion:
+          type: integer
+          format: int64
+
+    ResourceCapacityResponse:
+      type: object
+      required:
+        - id
+        - projectId
+        - developerId
+        - eligibility
+        - skillLevels
+        - weeklySlots
+        - timeOff
+        - minutesPerDay
+        - allocationPct
+        - effectiveFrom
+        - version
+        - projectVersion
+      properties:
+        id:
+          type: string
+          format: uuid
+        projectId:
+          type: string
+          format: uuid
+        developerId:
+          type: string
+          format: uuid
+        eligibility:
+          type: string
+          enum: [ELIGIBLE, INELIGIBLE]
+          example: ELIGIBLE
+        skillLevels:
+          type: array
+          items:
+            $ref: '#/components/schemas/SkillLevel'
+        weeklySlots:
+          type: array
+          items:
+            $ref: '#/components/schemas/WeeklySlot'
+        timeOff:
+          type: array
+          items:
+            $ref: '#/components/schemas/TimeOff'
+        minutesPerDay:
+          type: integer
+          example: 480
+        allocationPct:
+          type: number
+          format: decimal
+          example: 100.00
+        effectiveFrom:
+          type: string
+          format: date
+        effectiveTo:
+          type: string
+          format: date
+          nullable: true
+        version:
+          type: integer
+          format: int64
+        projectVersion:
+          type: integer
+          format: int64
+
+    TimeSlotSegment:
+      type: object
+      required:
+        - startAt
+        - endAt
+        - minutes
+      properties:
+        startAt:
+          type: string
+          format: date-time
+        endAt:
+          type: string
+          format: date-time
+        minutes:
+          type: integer
+
+    CalendarDay:
+      type: object
+      required:
+        - date
+        - availableSegments
+        - rawAvailableMinutes
+        - dailyBudgetMinutes
+        - missingCapacity
+        - exclusions
+      properties:
+        date:
+          type: string
+          format: date
+        capacityId:
+          type: string
+          format: uuid
+          nullable: true
+        capacityVersion:
+          type: integer
+          format: int64
+          nullable: true
+        availableSegments:
+          type: array
+          items:
+            $ref: '#/components/schemas/TimeSlotSegment'
+        rawAvailableMinutes:
+          type: integer
+        dailyBudgetMinutes:
+          type: integer
+        missingCapacity:
+          type: boolean
+        exclusions:
+          type: array
+          items:
+            type: string
+
+    ResourceCalendarResponse:
+      type: object
+      required:
+        - projectId
+        - developerId
+        - projectVersion
+        - timezone
+        - calendarPolicyVersion
+        - range
+        - eligibility
+        - capacityRefs
+        - days
+        - limitations
+      properties:
+        projectId:
+          type: string
+          format: uuid
+        developerId:
+          type: string
+          format: uuid
+        projectVersion:
+          type: integer
+          format: int64
+        timezone:
+          type: string
+          example: Asia/Ho_Chi_Minh
+        calendarPolicyVersion:
+          type: string
+          example: "1.0"
+        range:
+          type: object
+          properties:
+            from:
+              type: string
+              format: date
+            to:
+              type: string
+              format: date
+        eligibility:
+          type: string
+        capacityRefs:
+          type: array
+          items:
+            type: string
+            format: uuid
+        days:
+          type: array
+          items:
+            $ref: '#/components/schemas/CalendarDay'
+        limitations:
+          type: array
+          items:
+            type: string
+
+    ProblemDetail:
+      type: object
+      required:
+        - status
+        - title
+        - code
+      properties:
+        status:
+          type: integer
+          example: 409
+        title:
+          type: string
+          example: RESOURCE_PERIOD_OVERLAP
+        code:
+          type: string
+          example: RESOURCE_PERIOD_OVERLAP
+        detail:
+          type: string
+          example: Effective period overlaps with an existing capacity interval
+        instance:
+          type: string
+          example: /api/v1/workspaces/.../resources
+
+  responses:
+    BadRequest:
+      description: Bad Request / Validation Failed / Assignee Not Developer
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+    Forbidden:
+      description: Forbidden / Access Denied
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+    NotFound:
+      description: Resource Not Found / Capacity Missing
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+    Conflict:
+      description: Conflict / Period Overlap / Time Off Overlap / Plan Stale
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+    UnprocessableEntity:
+      description: Unprocessable Entity / Invalid Calendar / Capacity Missing
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'

@@ -1,0 +1,835 @@
+openapi: 3.1.0
+info:
+  title: DevSphere Monitoring, Control Tower & Automated Replanning API
+  version: 1.0.0
+  description: >-
+    REST API for intelligent project monitoring, CPM critical path & slack analysis,
+    evidence-based progress verification, alert lifecycle management with SHA-256
+    fingerprint deduplication and recurrence chaining, and guarded automated replanning.
+
+servers:
+  - url: /api/v1
+    description: DevSphere API Gateway
+
+security:
+  - BearerAuth: []
+
+paths:
+  /workspaces/{workspaceId}/projects/{projectId}/control-tower/graph:
+    get:
+      summary: Retrieve CPM Dependency Graph & Slack Metrics
+      description: >-
+        Calculates and returns the CPM graph with deterministic early/late dates,
+        total slack, free slack, and critical path identification. Guarded by internal
+        project membership (PM, DEVELOPER, VIEWER). CLIENT-only is forbidden.
+      operationId: getControlTowerGraph
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceId'
+        - $ref: '#/components/parameters/ProjectId'
+      responses:
+        '200':
+          description: CPM control tower graph calculated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ControlTowerGraphResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /workspaces/{workspaceId}/projects/{projectId}/impact-analyses:
+    post:
+      summary: Run CPM Delay Impact Analysis
+      description: >-
+        Simulates task delay, calculates downstream affected tasks, project makespan
+        shift, and committed deadline breach risk. Guarded by PM role.
+      operationId: runImpactAnalysis
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceId'
+        - $ref: '#/components/parameters/ProjectId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ImpactAnalysisRequest'
+      responses:
+        '200':
+          description: Delay impact analysis computed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImpactAnalysisResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /workspaces/{workspaceId}/projects/{projectId}/alert-rules:
+    get:
+      summary: Get Project Alert Rule Configuration
+      description: >-
+        Retrieves active rule settings and thresholds from project configuration.
+        Guarded by internal project membership.
+      operationId: getAlertRules
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceId'
+        - $ref: '#/components/parameters/ProjectId'
+      responses:
+        '200':
+          description: Alert rule settings retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AlertRuleSettingsDTO'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    patch:
+      summary: Update Project Alert Rule Configuration
+      description: >-
+        Updates rule enable toggles and sensitivity thresholds in project settings.
+        Guarded by PM role.
+      operationId: updateAlertRules
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceId'
+        - $ref: '#/components/parameters/ProjectId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateAlertRulesRequest'
+      responses:
+        '200':
+          description: Alert rule settings updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AlertRuleSettingsDTO'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /workspaces/{workspaceId}/projects/{projectId}/alerts/detect:
+    post:
+      summary: Trigger Alert Detection Scan
+      description: >-
+        Scans project work items, schedules, deadlines, and criteria evidence
+        against configured detection rules (TASK_BLOCKED, SCHEDULE_OVERDUE,
+        DEADLINE_BREACH_RISK, PROGRESS_EVIDENCE_MISSING) with SHA-256 deduplication.
+        Guarded by PM or DEVELOPER.
+      operationId: detectAlerts
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceId'
+        - $ref: '#/components/parameters/ProjectId'
+      responses:
+        '200':
+          description: Alert detection scan completed
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AlertResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /workspaces/{workspaceId}/projects/{projectId}/work-items/{workItemId}/evaluate-progress:
+    post:
+      summary: Evaluate Work Item Verified Progress
+      description: >-
+        Calculates observational weighted progress based on verified acceptance criteria
+        and CI/PR evidence. Purely observational; NEVER automatically mutates task status.
+        Guarded by internal project membership.
+      operationId: evaluateWorkItemProgress
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceId'
+        - $ref: '#/components/parameters/ProjectId'
+        - name: workItemId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Progress evaluated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProgressEvaluationResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+
+  /workspaces/{workspaceId}/projects/{projectId}/reschedule:
+    post:
+      summary: Trigger Guarded Automated Replanning
+      description: >-
+        Creates a candidate replan proposal (kind = 'AUTO_REPLAN') in status DRAFT,
+        preserving frozen entries and DONE tasks (ds_schedule_freeze), executes the CP-SAT
+        solver, and stores the solution via Two-Phase Update (ds_proposal_guard).
+        Invariant: NEVER alters the project active baseline or committed deadline automatically.
+        Guarded by PM role.
+      operationId: triggerReschedule
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceId'
+        - $ref: '#/components/parameters/ProjectId'
+      responses:
+        '200':
+          description: Candidate replanning proposal generated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RescheduleResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /workspaces/{workspaceId}/projects/{projectId}/alerts:
+    get:
+      summary: List Project Alerts with Filters
+      description: >-
+        Lists alerts detected in the project with optional filtering by status, severity,
+        or work item ID. Ordered by detectedAt descending. Guarded by internal project membership.
+      operationId: listAlerts
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceId'
+        - $ref: '#/components/parameters/ProjectId'
+        - name: status
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/AlertStatus'
+        - name: severity
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/AlertSeverity'
+        - name: workItemId
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: List of project alerts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AlertResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /workspaces/{workspaceId}/projects/{projectId}/alerts/{alertId}:
+    get:
+      summary: Get Alert Details
+      description: >-
+        Retrieves detailed alert snapshot including evidence and impact payloads.
+        Guarded by internal project membership.
+      operationId: getAlert
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceId'
+        - $ref: '#/components/parameters/ProjectId'
+        - $ref: '#/components/parameters/AlertId'
+      responses:
+        '200':
+          description: Alert retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AlertResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /workspaces/{workspaceId}/projects/{projectId}/alerts/{alertId}/status:
+    patch:
+      summary: Update Alert Lifecycle Status and Assignment
+      description: >-
+        Transitions alert status (NEW -> ACKNOWLEDGED -> IN_PROGRESS -> RESOLVED).
+        Assigns owner and stamps resolution timestamp upon RESOLVED. Enforces
+        optimistic concurrency via expectedVersion. Backward transition to NEW is rejected.
+        Guarded by PM role.
+      operationId: updateAlertStatus
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceId'
+        - $ref: '#/components/parameters/ProjectId'
+        - $ref: '#/components/parameters/AlertId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateAlertStatusRequest'
+      responses:
+        '200':
+          description: Alert status updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AlertResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /workspaces/{workspaceId}/projects/{projectId}/alerts/{alertId}/history:
+    get:
+      summary: Get Recurrence Chaining History for Alert
+      description: >-
+        Traverses the previous_alert_id ancestor chain to return chronological recurrence
+        history of alerts sharing the same condition. Guarded by internal project membership.
+      operationId: getAlertHistory
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceId'
+        - $ref: '#/components/parameters/ProjectId'
+        - $ref: '#/components/parameters/AlertId'
+      responses:
+        '200':
+          description: Recurrence history retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AlertResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    WorkspaceId:
+      name: workspaceId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    ProjectId:
+      name: projectId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    AlertId:
+      name: alertId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+  schemas:
+    AlertSeverity:
+      type: string
+      enum: [LOW, MEDIUM, HIGH, CRITICAL]
+
+    AlertStatus:
+      type: string
+      enum: [NEW, ACKNOWLEDGED, IN_PROGRESS, RESOLVED]
+
+    AlertResponse:
+      type: object
+      required:
+        - id
+        - projectId
+        - fingerprint
+        - alertCode
+        - severity
+        - status
+        - title
+        - detectedAt
+        - createdAt
+        - updatedAt
+        - version
+      properties:
+        id:
+          type: string
+          format: uuid
+        projectId:
+          type: string
+          format: uuid
+        workItemId:
+          type: string
+          format: uuid
+          nullable: true
+        previousAlertId:
+          type: string
+          format: uuid
+          nullable: true
+        fingerprint:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+        alertCode:
+          type: string
+        severity:
+          $ref: '#/components/schemas/AlertSeverity'
+        status:
+          $ref: '#/components/schemas/AlertStatus'
+        title:
+          type: string
+        evidence:
+          type: object
+        impactSnapshot:
+          type: object
+        assignedTo:
+          type: string
+          format: uuid
+          nullable: true
+        acknowledgedBy:
+          type: string
+          format: uuid
+          nullable: true
+        detectedAt:
+          type: string
+          format: date-time
+        resolvedAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        version:
+          type: integer
+          format: int64
+
+    UpdateAlertStatusRequest:
+      type: object
+      required:
+        - status
+        - expectedVersion
+      properties:
+        status:
+          $ref: '#/components/schemas/AlertStatus'
+        assignedTo:
+          type: string
+          format: uuid
+          nullable: true
+        expectedVersion:
+          type: integer
+          format: int64
+          minimum: 0
+
+    AlertRuleSettingsDTO:
+      type: object
+      required:
+        - taskBlockedRuleEnabled
+        - scheduleOverdueRuleEnabled
+        - deadlineBreachRiskRuleEnabled
+        - progressEvidenceMissingRuleEnabled
+        - deadlineWarningDays
+        - overdueGraceMinutes
+        - discrepancyThresholdPercent
+      properties:
+        taskBlockedRuleEnabled:
+          type: boolean
+        scheduleOverdueRuleEnabled:
+          type: boolean
+        deadlineBreachRiskRuleEnabled:
+          type: boolean
+        progressEvidenceMissingRuleEnabled:
+          type: boolean
+        deadlineWarningDays:
+          type: integer
+        overdueGraceMinutes:
+          type: integer
+        discrepancyThresholdPercent:
+          type: integer
+
+    UpdateAlertRulesRequest:
+      type: object
+      properties:
+        taskBlockedRuleEnabled:
+          type: boolean
+        scheduleOverdueRuleEnabled:
+          type: boolean
+        deadlineBreachRiskRuleEnabled:
+          type: boolean
+        progressEvidenceMissingRuleEnabled:
+          type: boolean
+        deadlineWarningDays:
+          type: integer
+        overdueGraceMinutes:
+          type: integer
+        discrepancyThresholdPercent:
+          type: integer
+
+    CpmNodeDto:
+      type: object
+      required:
+        - workItemId
+        - itemKey
+        - title
+        - status
+        - isBlocked
+        - durationMinutes
+        - earlyStartMinutes
+        - earlyFinishMinutes
+        - lateStartMinutes
+        - lateFinishMinutes
+        - totalSlackMinutes
+        - freeSlackMinutes
+        - isCritical
+      properties:
+        workItemId:
+          type: string
+          format: uuid
+        itemKey:
+          type: string
+        title:
+          type: string
+        status:
+          type: string
+        isBlocked:
+          type: boolean
+        durationMinutes:
+          type: integer
+        earlyStartMinutes:
+          type: integer
+          format: int64
+        earlyFinishMinutes:
+          type: integer
+          format: int64
+        lateStartMinutes:
+          type: integer
+          format: int64
+        lateFinishMinutes:
+          type: integer
+          format: int64
+        totalSlackMinutes:
+          type: integer
+          format: int64
+        freeSlackMinutes:
+          type: integer
+          format: int64
+        isCritical:
+          type: boolean
+
+    CpmEdgeDto:
+      type: object
+      required:
+        - predecessorId
+        - successorId
+        - linkType
+        - lagMinutes
+        - isCritical
+      properties:
+        predecessorId:
+          type: string
+          format: uuid
+        successorId:
+          type: string
+          format: uuid
+        linkType:
+          type: string
+        lagMinutes:
+          type: integer
+        isCritical:
+          type: boolean
+
+    ControlTowerGraphResponse:
+      type: object
+      required:
+        - projectId
+        - projectMakespanMinutes
+        - totalTasks
+        - completedTasks
+        - criticalTasksCount
+        - criticalPathItemIds
+        - nodes
+        - edges
+      properties:
+        projectId:
+          type: string
+          format: uuid
+        projectMakespanMinutes:
+          type: integer
+          format: int64
+        totalTasks:
+          type: integer
+        completedTasks:
+          type: integer
+        criticalTasksCount:
+          type: integer
+        criticalPathItemIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+        nodes:
+          type: array
+          items:
+            $ref: '#/components/schemas/CpmNodeDto'
+        edges:
+          type: array
+          items:
+            $ref: '#/components/schemas/CpmEdgeDto'
+
+    ImpactAnalysisRequest:
+      type: object
+      required:
+        - workItemId
+        - delayMinutes
+      properties:
+        workItemId:
+          type: string
+          format: uuid
+        delayMinutes:
+          type: integer
+          minimum: 1
+
+    ImpactAnalysisResponse:
+      type: object
+      required:
+        - projectId
+        - targetWorkItemId
+        - targetItemKey
+        - delayMinutes
+        - targetTotalSlackMinutes
+        - projectEtaDelayMinutes
+        - shiftsProjectDeadline
+        - affectedTasks
+      properties:
+        projectId:
+          type: string
+          format: uuid
+        targetWorkItemId:
+          type: string
+          format: uuid
+        targetItemKey:
+          type: string
+        delayMinutes:
+          type: integer
+        targetTotalSlackMinutes:
+          type: integer
+          format: int64
+        projectEtaDelayMinutes:
+          type: integer
+          format: int64
+        shiftsProjectDeadline:
+          type: boolean
+        affectedTasks:
+          type: array
+          items:
+            $ref: '#/components/schemas/AffectedTaskDto'
+
+    AffectedTaskDto:
+      type: object
+      required:
+        - workItemId
+        - itemKey
+        - title
+        - earlyFinishDelayMinutes
+      properties:
+        workItemId:
+          type: string
+          format: uuid
+        itemKey:
+          type: string
+        title:
+          type: string
+        earlyFinishDelayMinutes:
+          type: integer
+          format: int64
+
+    ProgressEvaluationResponse:
+      type: object
+      required:
+        - workItemId
+        - itemKey
+        - workKind
+        - currentStatus
+        - claimedProgress
+        - evaluationStatus
+        - totalCriteriaCount
+        - verifiedCriteriaCount
+        - discrepancyDetected
+        - evaluatedAt
+      properties:
+        workItemId:
+          type: string
+          format: uuid
+        itemKey:
+          type: string
+        workKind:
+          type: string
+        currentStatus:
+          type: string
+        claimedProgress:
+          type: number
+        verifiedProgress:
+          type: number
+          nullable: true
+        evaluationStatus:
+          type: string
+        totalCriteriaWeight:
+          type: number
+          nullable: true
+        verifiedCriteriaWeight:
+          type: number
+          nullable: true
+        totalCriteriaCount:
+          type: integer
+        verifiedCriteriaCount:
+          type: integer
+        discrepancyDetected:
+          type: boolean
+        evaluatedAt:
+          type: string
+          format: date-time
+
+    RescheduleResponse:
+      type: object
+      required:
+        - proposalId
+        - projectId
+        - proposalStatus
+        - solverStatus
+        - totalTasks
+        - frozenTasks
+        - createdAt
+      properties:
+        proposalId:
+          type: string
+          format: uuid
+        projectId:
+          type: string
+          format: uuid
+        proposalStatus:
+          type: string
+        solverStatus:
+          type: string
+        totalTasks:
+          type: integer
+        frozenTasks:
+          type: integer
+        forecastFinish:
+          type: string
+          format: date
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    ProblemDetail:
+      type: object
+      required:
+        - status
+        - title
+        - detail
+      properties:
+        type:
+          type: string
+          format: uri
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        instance:
+          type: string
+          format: uri
+        code:
+          type: string
+
+  responses:
+    BadRequest:
+      description: Bad request arguments or malformed payload
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+    Unauthorized:
+      description: Authentication required or token invalid
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+    Forbidden:
+      description: Insufficient project permissions
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+    Conflict:
+      description: Resource state or version conflict
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+    Unprocessable:
+      description: Domain validation failure or cycle detected
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'

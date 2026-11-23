@@ -47,6 +47,22 @@ class RegistrationUnavailableIntegrationTest {
                 .andExpect(status().isServiceUnavailable())
                 .andExpect(jsonPath("$.code").value("AUTH_NOT_CONFIGURED"))
                 .andExpect(header().string("Cache-Control", "no-store"));
+        mvc.perform(post("/api/v1/auth/forgot-password")
+                        .contentType("application/json")
+                        .content("""
+                                {"email":"%s"}
+                                """.formatted(email)))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.code").value("AUTH_NOT_CONFIGURED"))
+                .andExpect(header().string("Cache-Control", "no-store"));
+        mvc.perform(post("/api/v1/auth/forgot-password/verify")
+                        .contentType("application/json")
+                        .content("""
+                                {"email":"%s","code":"123456"}
+                                """.formatted(email)))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.code").value("AUTH_NOT_CONFIGURED"))
+                .andExpect(header().string("Cache-Control", "no-store"));
         assertThat(jdbc.queryForObject("select count(*) from users where email=cast(? as citext)",
                 Integer.class, email)).isZero();
     }

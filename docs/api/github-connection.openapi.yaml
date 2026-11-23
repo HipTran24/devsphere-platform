@@ -1,0 +1,485 @@
+openapi: 3.1.0
+info:
+  title: DevSphere GitHub Connection & Activity Sync API
+  version: 1.0.0
+  description: >
+    RESTful API endpoints for connecting GitHub repositories to projects,
+    ingesting HMAC-SHA256 verified webhooks, and synchronizing task-linked
+    git activities (branches, commits, and pull requests).
+servers:
+  - url: /api/v1
+paths:
+  /github/webhook:
+    post:
+      summary: GitHub Webhook Ingress
+      description: >
+        Public ingress endpoint for GitHub App and repository webhooks.
+        Guarded by HMAC-SHA256 signature verification over the raw payload body.
+        Synchronously parses push and pull_request events, extracts task keys,
+        maps activity rows, and maintains idempotent delivery deduplication.
+      operationId: handleGitHubWebhook
+      parameters:
+        - name: X-Hub-Signature-256
+          in: header
+          required: true
+          description: HMAC-SHA256 signature formatted as sha256=<64-hex-digits>.
+          schema:
+            type: string
+        - name: X-GitHub-Delivery
+          in: header
+          required: true
+          description: Unique GUID delivery identifier for deduplication.
+          schema:
+            type: string
+        - name: X-GitHub-Event
+          in: header
+          required: true
+          description: Event name (e.g. push, pull_request, ping).
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          description: Webhook processed or acknowledged gracefully (e.g., duplicate or unregistered repo).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  deliveryId:
+                    type: string
+                  reason:
+                    type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /workspaces/{workspaceId}/projects/{projectId}/github/repositories:
+    parameters:
+      - name: workspaceId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: projectId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    post:
+      summary: Connect GitHub repository to project
+      description: >
+        Connects a GitHub repository to a project.
+        Enforces a single active repository per project and global repository uniqueness.
+        Requires active PM role on the project.
+      operationId: connectGitHubRepository
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConnectRepositoryRequest'
+      responses:
+        '201':
+          description: Repository connected successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GitHubRepositoryResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+    get:
+      summary: List connected repositories for project
+      description: Returns repository connection records for the project. Scoped to project members.
+      operationId: listGitHubRepositories
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: List of connected repositories
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/GitHubRepositoryResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /workspaces/{workspaceId}/projects/{projectId}/github/repositories/{repositoryId}/disconnect:
+    parameters:
+      - name: workspaceId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: projectId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: repositoryId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    post:
+      summary: Disconnect GitHub repository
+      description: Marks repository as inactive (active = false). Requires active PM role on the project.
+      operationId: disconnectGitHubRepository
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Repository disconnected successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GitHubRepositoryResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /workspaces/{workspaceId}/projects/{projectId}/github/repositories/{repositoryId}:
+    parameters:
+      - name: workspaceId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: projectId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: repositoryId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    delete:
+      summary: Disconnect repository (delete alias)
+      description: Disconnects the repository by marking it inactive. Requires active PM role on the project.
+      operationId: deleteGitHubRepository
+      security:
+        - BearerAuth: []
+      responses:
+        '204':
+          description: Repository disconnected successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /workspaces/{workspaceId}/projects/{projectId}/github/activities:
+    parameters:
+      - name: workspaceId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: projectId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    get:
+      summary: List GitHub activities for project
+      description: >
+        Returns git activities (branches, commits, pull requests) linked to the project,
+        ordered by happened_at DESC. Optional query parameters support filtering by workItemId and kind.
+        Scoped to project members.
+      operationId: listGitHubActivities
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: workItemId
+          in: query
+          required: false
+          description: Filter activities linked to a specific work item UUID
+          schema:
+            type: string
+            format: uuid
+        - name: kind
+          in: query
+          required: false
+          description: Filter activities by kind (BRANCH, COMMIT, PULL_REQUEST, HUMAN_REVIEW, QUALITY_GATE)
+          schema:
+            type: string
+            enum: [BRANCH, COMMIT, PULL_REQUEST, HUMAN_REVIEW, QUALITY_GATE]
+      responses:
+        '200':
+          description: List of GitHub activities
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/GitHubActivityResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Bearer access token issued by DevSphere authentication service.
+
+  schemas:
+    ConnectRepositoryRequest:
+      type: object
+      required:
+        - githubInstallationId
+        - githubRepoId
+        - fullName
+      properties:
+        githubInstallationId:
+          type: integer
+          format: int64
+          minimum: 1
+          example: 12345
+        githubRepoId:
+          type: integer
+          format: int64
+          minimum: 1
+          example: 67890
+        fullName:
+          type: string
+          minLength: 1
+          maxLength: 255
+          example: devsphere-org/backend-service
+        defaultBranch:
+          type: string
+          maxLength: 120
+          default: main
+          example: main
+        isPrivate:
+          type: boolean
+          default: true
+          example: true
+
+    GitHubRepositoryResponse:
+      type: object
+      required:
+        - id
+        - workspaceId
+        - projectId
+        - githubInstallationId
+        - githubRepoId
+        - fullName
+        - defaultBranch
+        - isPrivate
+        - active
+        - createdAt
+        - updatedAt
+        - version
+      properties:
+        id:
+          type: string
+          format: uuid
+        workspaceId:
+          type: string
+          format: uuid
+        projectId:
+          type: string
+          format: uuid
+        githubInstallationId:
+          type: integer
+          format: int64
+        githubRepoId:
+          type: integer
+          format: int64
+        fullName:
+          type: string
+        defaultBranch:
+          type: string
+        isPrivate:
+          type: boolean
+        active:
+          type: boolean
+        syncCursor:
+          type: string
+          nullable: true
+        lastSyncedAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        version:
+          type: integer
+          format: int64
+
+    GitHubActivityResponse:
+      type: object
+      required:
+        - id
+        - projectId
+        - repositoryId
+        - kind
+        - githubObjectId
+        - state
+        - happenedAt
+        - syncedAt
+        - createdAt
+        - updatedAt
+        - version
+      properties:
+        id:
+          type: string
+          format: uuid
+        projectId:
+          type: string
+          format: uuid
+        repositoryId:
+          type: string
+          format: uuid
+        workItemId:
+          type: string
+          format: uuid
+          nullable: true
+        kind:
+          type: string
+          enum: [BRANCH, COMMIT, PULL_REQUEST, HUMAN_REVIEW, QUALITY_GATE]
+        githubObjectId:
+          type: string
+        commitSha:
+          type: string
+          pattern: '^[0-9a-f]{40}$'
+          nullable: true
+        prNumber:
+          type: integer
+          nullable: true
+        prHeadSha:
+          type: string
+          pattern: '^[0-9a-f]{40}$'
+          nullable: true
+        actorLogin:
+          type: string
+          nullable: true
+        state:
+          type: string
+        title:
+          type: string
+          nullable: true
+        payload:
+          type: object
+          additionalProperties: true
+        happenedAt:
+          type: string
+          format: date-time
+        syncedAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        version:
+          type: integer
+          format: int64
+
+    ProblemDetail:
+      type: object
+      required:
+        - status
+        - title
+        - code
+      properties:
+        status:
+          type: integer
+          example: 400
+        title:
+          type: string
+          example: Validation failed
+        code:
+          type: string
+          example: VALIDATION_FAILED
+        detail:
+          type: string
+          example: Detailed description of the error
+        instance:
+          type: string
+          example: /api/v1/github/webhook
+
+  responses:
+    BadRequest:
+      description: Bad Request / Validation Failed
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+    Unauthorized:
+      description: Unauthorized / Webhook Signature Invalid
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+    Forbidden:
+      description: Forbidden / Access Denied
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+    NotFound:
+      description: Resource Not Found
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+    Conflict:
+      description: Conflict / Duplicate Repository / Repository Already Connected
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'

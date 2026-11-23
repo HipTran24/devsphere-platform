@@ -1,0 +1,1259 @@
+openapi: 3.1.0
+info:
+  title: DevSphere Collaboration, Client Portal, Reports & AI Integration API
+  version: 1.0.0
+  description: >-
+    REST API for DevSphere Milestone 5 covering AI Assistant & Schema Validation Gate,
+    Client Portal with Zero-Data-Leak guarantee, Milestone Client Acceptance,
+    Scheduled Reports & Snapshots with pure-Java PDF/XLSX export, Real-time Team Chat,
+    Attachment Management with Antivirus Checksum verification, and User Notifications.
+
+servers:
+  - url: /api/v1
+    description: DevSphere API Gateway
+
+security:
+  - BearerAuth: []
+
+paths:
+  # =========================================================================
+  # 1. AI Assistant & Validation Gate Endpoints
+  # =========================================================================
+  /workspaces/{workspaceId}/projects/{projectId}/ai/jobs:
+    post:
+      summary: Create an AI Job
+      description: >-
+        Submits an AI job request (e.g. REQUIREMENT_PLAN, PR_REVIEW, REPORT_SUMMARY).
+        Initializes job in PENDING state with validation_status UNVALIDATED and validation_attempts 0.
+        Accessible by internal project members (PM, DEVELOPER).
+      operationId: createAiJob
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceId'
+        - $ref: '#/components/parameters/ProjectId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAiJobRequest'
+      responses:
+        '201':
+          description: AI job successfully created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AiJobResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestProblem'
+        '401':
+          $ref: '#/components/responses/UnauthorizedProblem'
+        '403':
+          $ref: '#/components/responses/ForbiddenProblem'
+        '404':
+          $ref: '#/components/responses/NotFoundProblem'
+
+    get:
+      summary: List AI Jobs for a Project
+      description: Lists all AI jobs for the project, sorted by createdAt descending.
+      operationId: listAiJobs
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceId'
+        - $ref: '#/components/parameters/ProjectId'
+      responses:
+        '200':
+          description: List of AI jobs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AiJobResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedProblem'
+        '403':
+          $ref: '#/components/responses/ForbiddenProblem'
+        '404':
+          $ref: '#/components/responses/NotFoundProblem'
+
+  /workspaces/{workspaceId}/projects/{projectId}/ai/jobs/{id}:
+    get:
+      summary: Get AI Job by ID
+      description: Retrieves details of an AI job by its UUID.
+      operationId: getAiJob
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceId'
+        - $ref: '#/components/parameters/ProjectId'
+        - $ref: '#/components/parameters/AiJobId'
+      responses:
+        '200':
+          description: AI job details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AiJobResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedProblem'
+        '403':
+          $ref: '#/components/responses/ForbiddenProblem'
+        '404':
+          $ref: '#/components/responses/NotFoundProblem'
+
+  /workspaces/{workspaceId}/projects/{projectId}/ai/jobs/{id}/complete:
+    post:
+      summary: Complete an AI Job with Validation Gate
+      description: >-
+        Submits LLM output for an AI job, recording token counts. Passes the output
+        through the AiValidationGate to verify JSON schema structure and hallucination
+        detection (verifying that entity IDs in output exist in DB or input_refs).
+        Increments validation_attempts (max 2). Sets validation_status to VALID or INVALID.
+        Downstream database triggers (ds_proposal_guard, ds_report_approval, ds_review_evidence)
+        require status = 'SUCCESS' AND validation_status = 'VALID'.
+      operationId: completeAiJob
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceId'
+        - $ref: '#/components/parameters/ProjectId'
+        - $ref: '#/components/parameters/AiJobId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CompleteAiJobRequest'
+      responses:
+        '200':
+          description: AI job completed and validated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AiJobResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestProblem'
+        '401':
+          $ref: '#/components/responses/UnauthorizedProblem'
+        '403':
+          $ref: '#/components/responses/ForbiddenProblem'
+        '404':
+          $ref: '#/components/responses/NotFoundProblem'
+
+  # =========================================================================
+  # 2. Client Portal & Milestone Acceptance Endpoints
+  # =========================================================================
+  /client-portal/workspaces/{workspaceId}/projects/{projectId}/overview:
+    get:
+      summary: Get Client Project Overview (Zero Data Leak)
+      description: >-
+        Returns a high-level project overview tailored strictly for external CLIENT roles.
+        Upholds the Zero Data Leak invariant: exposes only published milestones (published_to_client=true)
+        and published reports (visible_to_client=true AND status='PUBLISHED').
+        Excludes commit SHAs, PR diffs, CI logs, team chat channels, and developer capacity.
+      operationId: getClientProjectOverview
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceId'
+        - $ref: '#/components/parameters/ProjectId'
+      responses:
+        '200':
+          description: Client project overview
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClientProjectOverviewResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedProblem'
+        '403':
+          $ref: '#/components/responses/ForbiddenProblem'
+        '404':
+          $ref: '#/components/responses/NotFoundProblem'
+
+  /client-portal/workspaces/{workspaceId}/projects/{projectId}/milestones:
+    get:
+      summary: List Published Milestones for Client
+      description: Lists milestones marked published_to_client = true for the given project.
+      operationId: listPublishedMilestones
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceId'
+        - $ref: '#/components/parameters/ProjectId'
+      responses:
+        '200':
+          description: List of published milestones
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PublishedMilestoneResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedProblem'
+        '403':
+          $ref: '#/components/responses/ForbiddenProblem'
+        '404':
+          $ref: '#/components/responses/NotFoundProblem'
+
+  /client-portal/workspaces/{workspaceId}/projects/{projectId}/milestones/{milestoneId}/review:
+    post:
+      summary: Review Milestone (Client Acceptance / Change Request)
+      description: >-
+        Guarded strictly by the CLIENT role. Allows client to ACCEPT or REQUEST_CHANGES
+        on a published milestone. Enforces database trigger ds_milestone_acceptance()
+        which verifies published_to_client=true, acceptance_status='ACCEPTED', and that
+        accepted_by is an active project member with CLIENT role.
+      operationId: reviewMilestone
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceId'
+        - $ref: '#/components/parameters/ProjectId'
+        - $ref: '#/components/parameters/MilestoneId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReviewMilestoneRequest'
+      responses:
+        '200':
+          description: Milestone review receipt
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MilestoneReviewReceiptResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestProblem'
+        '401':
+          $ref: '#/components/responses/UnauthorizedProblem'
+        '403':
+          $ref: '#/components/responses/ForbiddenProblem'
+        '404':
+          $ref: '#/components/responses/NotFoundProblem'
+
+  /workspaces/{workspaceId}/projects/{projectId}/milestones/{milestoneId}/publish:
+    patch:
+      summary: Publish Milestone to Client
+      description: >-
+        Guarded by PM role. Updates published_to_client flag of a milestone, making it
+        visible in the Client Portal and eligible for client acceptance.
+      operationId: publishMilestone
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceId'
+        - $ref: '#/components/parameters/ProjectId'
+        - $ref: '#/components/parameters/MilestoneId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PublishMilestoneRequest'
+      responses:
+        '200':
+          description: Milestone publication status updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublishedMilestoneResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedProblem'
+        '403':
+          $ref: '#/components/responses/ForbiddenProblem'
+        '404':
+          $ref: '#/components/responses/NotFoundProblem'
+
+  # =========================================================================
+  # 3. Scheduled Reports & Snapshots Endpoints
+  # =========================================================================
+  /workspaces/{workspaceId}/projects/{projectId}/reports:
+    post:
+      summary: Create a Project Report (Draft)
+      description: >-
+        Creates a new project report in DRAFT status. Validates reportType (DAILY, WEEKLY, SPRINT,
+        RISK, CODE_QUALITY, CLIENT_ROADMAP). If an aiJobId is linked, verifies that the AI job
+        completed with status SUCCESS and validation_status VALID.
+      operationId: createReport
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceId'
+        - $ref: '#/components/parameters/ProjectId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateReportRequest'
+      responses:
+        '201':
+          description: Report created in DRAFT status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReportResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestProblem'
+        '401':
+          $ref: '#/components/responses/UnauthorizedProblem'
+        '403':
+          $ref: '#/components/responses/ForbiddenProblem'
+        '404':
+          $ref: '#/components/responses/NotFoundProblem'
+
+    get:
+      summary: List Project Reports
+      description: >-
+        Lists reports. Internal project members see all reports. External CLIENT members
+        can only see reports where visible_to_client = true AND status = 'PUBLISHED'.
+      operationId: listReports
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceId'
+        - $ref: '#/components/parameters/ProjectId'
+      responses:
+        '200':
+          description: List of project reports
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ReportResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedProblem'
+        '403':
+          $ref: '#/components/responses/ForbiddenProblem'
+        '404':
+          $ref: '#/components/responses/NotFoundProblem'
+
+  /workspaces/{workspaceId}/projects/{projectId}/reports/{id}:
+    get:
+      summary: Get Project Report by ID
+      description: >-
+        Retrieves report details by ID. Client users can only access the report if
+        visible_to_client = true AND status = 'PUBLISHED'.
+      operationId: getReport
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceId'
+        - $ref: '#/components/parameters/ProjectId'
+        - $ref: '#/components/parameters/ReportId'
+      responses:
+        '200':
+          description: Report details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReportResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedProblem'
+        '403':
+          $ref: '#/components/responses/ForbiddenProblem'
+        '404':
+          $ref: '#/components/responses/NotFoundProblem'
+
+  /workspaces/{workspaceId}/projects/{projectId}/reports/{id}/approve:
+    post:
+      summary: Approve Project Report
+      description: >-
+        Guarded strictly by PM role. Approves a DRAFT report, satisfying database trigger
+        ds_report_approval() which requires status='APPROVED' and approved_by having PM role.
+      operationId: approveReport
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceId'
+        - $ref: '#/components/parameters/ProjectId'
+        - $ref: '#/components/parameters/ReportId'
+      responses:
+        '200':
+          description: Report approved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReportResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestProblem'
+        '401':
+          $ref: '#/components/responses/UnauthorizedProblem'
+        '403':
+          $ref: '#/components/responses/ForbiddenProblem'
+        '404':
+          $ref: '#/components/responses/NotFoundProblem'
+
+  /workspaces/{workspaceId}/projects/{projectId}/reports/{id}/publish:
+    post:
+      summary: Publish Project Report to Client
+      description: >-
+        Guarded strictly by PM role. Publishes an approved report, setting status='PUBLISHED',
+        published_at=now(), and visible_to_client=true.
+      operationId: publishReport
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceId'
+        - $ref: '#/components/parameters/ProjectId'
+        - $ref: '#/components/parameters/ReportId'
+      responses:
+        '200':
+          description: Report published
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReportResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestProblem'
+        '401':
+          $ref: '#/components/responses/UnauthorizedProblem'
+        '403':
+          $ref: '#/components/responses/ForbiddenProblem'
+        '404':
+          $ref: '#/components/responses/NotFoundProblem'
+
+  /workspaces/{workspaceId}/projects/{projectId}/reports/{id}/export:
+    get:
+      summary: Export Project Report (PDF / XLSX)
+      description: >-
+        Exports report into binary format (PDF or XLSX) generated using pure Java standard
+        library. Enforces client visibility guard (client users can only export published reports).
+      operationId: exportReport
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceId'
+        - $ref: '#/components/parameters/ProjectId'
+        - $ref: '#/components/parameters/ReportId'
+        - name: format
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [PDF, XLSX]
+            default: PDF
+          description: Desired export format
+      responses:
+        '200':
+          description: Exported report file
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema:
+                type: string
+                format: binary
+        '400':
+          $ref: '#/components/responses/BadRequestProblem'
+        '401':
+          $ref: '#/components/responses/UnauthorizedProblem'
+        '403':
+          $ref: '#/components/responses/ForbiddenProblem'
+        '404':
+          $ref: '#/components/responses/NotFoundProblem'
+
+  # =========================================================================
+  # 4. Real-time Team Chat Endpoints
+  # =========================================================================
+  /workspaces/{workspaceId}/projects/{projectId}/chat/channels:
+    post:
+      summary: Create Chat Channel
+      description: >-
+        Creates a new chat channel (GENERAL or TASK_DISCUSS). TASK_DISCUSS channels
+        link to an active work item. Accessible by internal project members.
+      operationId: createChatChannel
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceId'
+        - $ref: '#/components/parameters/ProjectId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateChannelRequest'
+      responses:
+        '201':
+          description: Chat channel created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatChannelResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestProblem'
+        '401':
+          $ref: '#/components/responses/UnauthorizedProblem'
+        '403':
+          $ref: '#/components/responses/ForbiddenProblem'
+        '404':
+          $ref: '#/components/responses/NotFoundProblem'
+
+    get:
+      summary: List Chat Channels
+      description: Lists active chat channels in the project.
+      operationId: listChatChannels
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceId'
+        - $ref: '#/components/parameters/ProjectId'
+      responses:
+        '200':
+          description: List of channels
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ChatChannelResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedProblem'
+        '403':
+          $ref: '#/components/responses/ForbiddenProblem'
+        '404':
+          $ref: '#/components/responses/NotFoundProblem'
+
+  /workspaces/{workspaceId}/projects/{projectId}/chat/channels/{channelId}/messages:
+    post:
+      summary: Send Chat Message
+      description: Posts a message to a chat channel. Supports task references and attachment links.
+      operationId: sendChatMessage
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceId'
+        - $ref: '#/components/parameters/ProjectId'
+        - $ref: '#/components/parameters/ChannelId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SendMessageRequest'
+      responses:
+        '201':
+          description: Message posted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatMessageResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestProblem'
+        '401':
+          $ref: '#/components/responses/UnauthorizedProblem'
+        '403':
+          $ref: '#/components/responses/ForbiddenProblem'
+        '404':
+          $ref: '#/components/responses/NotFoundProblem'
+
+    get:
+      summary: List Messages in Channel
+      description: Paginated retrieval of messages in a chat channel.
+      operationId: listChatMessages
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceId'
+        - $ref: '#/components/parameters/ProjectId'
+        - $ref: '#/components/parameters/ChannelId'
+      responses:
+        '200':
+          description: Paginated messages
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ChatMessageResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedProblem'
+        '403':
+          $ref: '#/components/responses/ForbiddenProblem'
+        '404':
+          $ref: '#/components/responses/NotFoundProblem'
+
+  # =========================================================================
+  # 5. Attachment Management Endpoints
+  # =========================================================================
+  /workspaces/{workspaceId}/projects/{projectId}/attachments/upload-request:
+    post:
+      summary: Request Attachment Upload URL
+      description: >-
+        Generates a pre-signed or validated upload request for an attachment. Enforces
+        SHA-256 checksum format (64-character hex string) and scope alignment.
+      operationId: requestAttachmentUpload
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceId'
+        - $ref: '#/components/parameters/ProjectId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UploadRequestCommand'
+      responses:
+        '201':
+          description: Upload request created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UploadRequestResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestProblem'
+        '401':
+          $ref: '#/components/responses/UnauthorizedProblem'
+        '403':
+          $ref: '#/components/responses/ForbiddenProblem'
+        '404':
+          $ref: '#/components/responses/NotFoundProblem'
+
+  /workspaces/{workspaceId}/projects/{projectId}/attachments/{attachmentId}/confirm:
+    post:
+      summary: Confirm Attachment Upload
+      description: Confirms that file upload completed, updates visibility and status to AVAILABLE.
+      operationId: confirmAttachmentUpload
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceId'
+        - $ref: '#/components/parameters/ProjectId'
+        - $ref: '#/components/parameters/AttachmentId'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConfirmUploadRequest'
+      responses:
+        '200':
+          description: Attachment confirmed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AttachmentResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestProblem'
+        '401':
+          $ref: '#/components/responses/UnauthorizedProblem'
+        '403':
+          $ref: '#/components/responses/ForbiddenProblem'
+        '404':
+          $ref: '#/components/responses/NotFoundProblem'
+
+  /workspaces/{workspaceId}/projects/{projectId}/attachments/{attachmentId}/download:
+    get:
+      summary: Request Pre-signed Download URL
+      description: Generates a pre-signed S3 download URL for an attachment, validating project and channel access.
+      operationId: downloadAttachment
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceId'
+        - $ref: '#/components/parameters/ProjectId'
+        - $ref: '#/components/parameters/AttachmentId'
+      responses:
+        '200':
+          description: Pre-signed download URL generated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DownloadAttachmentResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedProblem'
+        '403':
+          $ref: '#/components/responses/ForbiddenProblem'
+        '404':
+          $ref: '#/components/responses/NotFoundProblem'
+
+  # =========================================================================
+  # 6. User Notifications Endpoints
+  # =========================================================================
+  /notifications:
+    get:
+      summary: List User Notifications
+      description: Retrieves in-app notifications for the authenticated user with unread filter.
+      operationId: listNotifications
+      parameters:
+        - name: unreadOnly
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: List of notifications
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/NotificationResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedProblem'
+
+  /notifications/{id}/read:
+    patch:
+      summary: Mark Notification as Read
+      description: Marks a specific notification as read.
+      operationId: markNotificationRead
+      parameters:
+        - $ref: '#/components/parameters/NotificationId'
+      responses:
+        '200':
+          description: Notification updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedProblem'
+        '404':
+          $ref: '#/components/responses/NotFoundProblem'
+
+  /notifications/read-all:
+    post:
+      summary: Mark All Notifications as Read
+      description: Marks all unread notifications of authenticated user as read.
+      operationId: markAllNotificationsRead
+      responses:
+        '200':
+          description: All notifications marked as read
+        '401':
+          $ref: '#/components/responses/UnauthorizedProblem'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    WorkspaceId:
+      name: workspaceId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: UUID of the workspace
+
+    ProjectId:
+      name: projectId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: UUID of the project
+
+    AiJobId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: UUID of the AI job
+
+    MilestoneId:
+      name: milestoneId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: UUID of the milestone
+
+    ReportId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: UUID of the report
+
+    ChannelId:
+      name: channelId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: UUID of the chat channel
+
+    AttachmentId:
+      name: attachmentId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: UUID of the attachment
+
+    NotificationId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: UUID of the notification
+
+  schemas:
+    # --- AI Models ---
+    CreateAiJobRequest:
+      type: object
+      required:
+        - jobType
+        - inputPrompt
+      properties:
+        jobType:
+          type: string
+          enum:
+            - REQUIREMENT_PLAN
+            - PUSH_REVIEW
+            - PR_REVIEW
+            - PROGRESS_EXPLAIN
+            - ALERT_EXPLAIN
+            - CHAT_ANSWER
+            - REPORT_SUMMARY
+            - AI_CRITIQUE
+        inputPrompt:
+          type: string
+        inputRefs:
+          type: object
+          additionalProperties: true
+        model:
+          type: string
+          example: gemini-3.8-flash-high
+
+    CompleteAiJobRequest:
+      type: object
+      required:
+        - outputJson
+      properties:
+        outputJson:
+          type: string
+          description: Valid JSON string satisfying domain schema
+        tokensIn:
+          type: integer
+          default: 0
+        tokensOut:
+          type: integer
+          default: 0
+
+    AiJobResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        workspaceId:
+          type: string
+          format: uuid
+        projectId:
+          type: string
+          format: uuid
+        jobType:
+          type: string
+        status:
+          type: string
+          enum: [PENDING, SUCCESS, FAILED]
+        validationStatus:
+          type: string
+          enum: [UNVALIDATED, VALID, INVALID]
+        validationAttempts:
+          type: integer
+        inputPrompt:
+          type: string
+        inputRefs:
+          type: string
+        outputJson:
+          type: string
+        model:
+          type: string
+        tokensIn:
+          type: integer
+        tokensOut:
+          type: integer
+        costMicros:
+          type: integer
+        errorMessage:
+          type: string
+        createdBy:
+          type: string
+          format: uuid
+        createdAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+
+    # --- Client Portal Models ---
+    ClientProjectOverviewResponse:
+      type: object
+      properties:
+        projectId:
+          type: string
+          format: uuid
+        projectKey:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        status:
+          type: string
+        startDate:
+          type: string
+          format: date
+        targetDate:
+          type: string
+          format: date
+        totalWorkItems:
+          type: integer
+        completedWorkItems:
+          type: integer
+        milestones:
+          type: array
+          items:
+            $ref: '#/components/schemas/PublishedMilestoneResponse'
+        reports:
+          type: array
+          items:
+            $ref: '#/components/schemas/PublishedReportResponse'
+
+    PublishedMilestoneResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        projectId:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+        dueDate:
+          type: string
+          format: date
+        status:
+          type: string
+        acceptanceStatus:
+          type: string
+          enum: [PENDING, ACCEPTED, REJECTED]
+        publishedToClient:
+          type: boolean
+        acceptedAt:
+          type: string
+          format: date-time
+        acceptedBy:
+          type: string
+          format: uuid
+        acceptanceNotes:
+          type: string
+
+    PublishedReportResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        reportType:
+          type: string
+        status:
+          type: string
+        publishedAt:
+          type: string
+          format: date-time
+
+    ReviewMilestoneRequest:
+      type: object
+      required:
+        - decision
+      properties:
+        decision:
+          type: string
+          enum: [ACCEPT, REQUEST_CHANGES]
+        notes:
+          type: string
+
+    MilestoneReviewReceiptResponse:
+      type: object
+      properties:
+        milestoneId:
+          type: string
+          format: uuid
+        acceptanceStatus:
+          type: string
+        status:
+          type: string
+        reviewedBy:
+          type: string
+          format: uuid
+        reviewedAt:
+          type: string
+          format: date-time
+        notes:
+          type: string
+
+    PublishMilestoneRequest:
+      type: object
+      required:
+        - publishedToClient
+      properties:
+        publishedToClient:
+          type: boolean
+
+    # --- Report Models ---
+    CreateReportRequest:
+      type: object
+      required:
+        - title
+        - reportType
+        - reportData
+      properties:
+        title:
+          type: string
+        reportType:
+          type: string
+          enum: [DAILY, WEEKLY, SPRINT, RISK, CODE_QUALITY, CLIENT_ROADMAP]
+        reportData:
+          type: string
+        aiJobId:
+          type: string
+          format: uuid
+
+    ReportResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        workspaceId:
+          type: string
+          format: uuid
+        projectId:
+          type: string
+          format: uuid
+        title:
+          type: string
+        reportType:
+          type: string
+        status:
+          type: string
+          enum: [DRAFT, APPROVED, PUBLISHED, ARCHIVED]
+        visibleToClient:
+          type: boolean
+        aiJobId:
+          type: string
+          format: uuid
+        reportData:
+          type: string
+        createdBy:
+          type: string
+          format: uuid
+        createdAt:
+          type: string
+          format: date-time
+        approvedBy:
+          type: string
+          format: uuid
+        approvedAt:
+          type: string
+          format: date-time
+        publishedAt:
+          type: string
+          format: date-time
+
+    # --- Chat Models ---
+    CreateChannelRequest:
+      type: object
+      required:
+        - type
+        - name
+      properties:
+        type:
+          type: string
+          enum: [GENERAL, TASK_DISCUSS]
+        name:
+          type: string
+        workItemId:
+          type: string
+          format: uuid
+
+    ChatChannelResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        projectId:
+          type: string
+          format: uuid
+        type:
+          type: string
+        name:
+          type: string
+        workItemId:
+          type: string
+          format: uuid
+        createdBy:
+          type: string
+          format: uuid
+        createdAt:
+          type: string
+          format: date-time
+
+    SendMessageRequest:
+      type: object
+      required:
+        - content
+      properties:
+        content:
+          type: string
+        attachmentIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+
+    ChatMessageResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        channelId:
+          type: string
+          format: uuid
+        senderId:
+          type: string
+          format: uuid
+        content:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    # --- Attachment Models ---
+    UploadRequestCommand:
+      type: object
+      required:
+        - fileName
+        - contentType
+        - fileSize
+        - checksumSha256
+        - visibility
+      properties:
+        fileName:
+          type: string
+        contentType:
+          type: string
+        fileSize:
+          type: integer
+        checksumSha256:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+        visibility:
+          type: string
+          enum: [INTERNAL, CLIENT]
+        workItemId:
+          type: string
+          format: uuid
+
+    UploadRequestResponse:
+      type: object
+      properties:
+        attachmentId:
+          type: string
+          format: uuid
+        uploadUrl:
+          type: string
+        storageKey:
+          type: string
+
+    ConfirmUploadRequest:
+      type: object
+      properties:
+        visibility:
+          type: string
+          enum: [INTERNAL, CLIENT]
+
+    AttachmentResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        workspaceId:
+          type: string
+          format: uuid
+        projectId:
+          type: string
+          format: uuid
+        fileName:
+          type: string
+        contentType:
+          type: string
+        fileSize:
+          type: integer
+        checksumSha256:
+          type: string
+        visibility:
+          type: string
+        status:
+          type: string
+
+    # --- Notification Models ---
+    NotificationResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        title:
+          type: string
+        message:
+          type: string
+        type:
+          type: string
+        read:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+
+    # --- Error Model (RFC 7807 ProblemDetail) ---
+    ProblemDetail:
+      type: object
+      required:
+        - type
+        - title
+        - status
+      properties:
+        type:
+          type: string
+          format: uri
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        instance:
+          type: string
+          format: uri
+        code:
+          type: string
+
+  responses:
+    BadRequestProblem:
+      description: Bad Request - Validation or Malformed JSON
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+
+    UnauthorizedProblem:
+      description: Unauthorized - Missing or invalid Bearer JWT
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+
+    ForbiddenProblem:
+      description: Forbidden - Insufficient project role privileges
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+
+    NotFoundProblem:
+      description: Not Found - Requested resource does not exist
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'

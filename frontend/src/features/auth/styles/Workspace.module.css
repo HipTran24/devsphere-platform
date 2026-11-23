@@ -5,7 +5,34 @@
 .header button { background: transparent; border: 1px solid var(--color-text-secondary); border-radius: 999px; padding: 8px 16px; color: var(--color-text); cursor: pointer; }
 .content { max-width: 1000px; padding: 32px 24px; margin-inline: auto; }
 .content h1 { font-size: 28px; margin: 24px 0 8px; }
+.titleRow { display: flex; align-items: center; justify-content: space-between; margin-top: 24px; margin-bottom: 16px; flex-wrap: wrap; gap: 12px; }
+.titleRow h1 { margin: 0; }
 .secondary, .empty p { color: var(--color-text-secondary); }
 .demo { color: var(--color-primary); font-size: 12px; }
 .empty { margin-top: 32px; padding: 40px 24px; border: 1px solid #333; border-radius: 16px; text-align: center; background: var(--color-card); }
 .empty h2 { font-size: 20px; }
+.createBtn { background: var(--color-primary, #6366f1); color: #fff; border: none; border-radius: 8px; padding: 10px 18px; font-weight: 600; cursor: pointer; font-size: 14px; }
+.createBtn:hover { opacity: 0.9; }
+.workspaceGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; margin-top: 24px; }
+.workspaceCard { background: var(--color-card, #1e1e24); border: 1px solid #333; border-radius: 12px; padding: 20px; display: flex; flex-direction: column; gap: 10px; }
+.cardHeader { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+.cardTitle { font-size: 18px; font-weight: 600; margin: 0; color: var(--color-text); }
+.cardSlug { font-size: 12px; color: var(--color-text-secondary); font-family: monospace; }
+.cardDesc { font-size: 14px; color: var(--color-text-secondary); margin: 0; line-height: 1.4; }
+.badges { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+.badge { font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 6px; letter-spacing: 0.05em; text-transform: uppercase; background: #333; color: #aaa; }
+.badgeOwner { background: #312e81; color: #a5b4fc; }
+.badgeMember { background: #064e3b; color: #6ee7b7; }
+.badgeStatus { background: #27272a; color: #d4d4d8; }
+.modalOverlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 16px; }
+.modalCard { background: var(--color-card, #18181b); border: 1px solid #3f3f46; border-radius: 16px; padding: 28px; width: 100%; max-width: 480px; }
+.modalCard h2 { margin-top: 0; font-size: 20px; }
+.formGroup { margin-bottom: 16px; }
+.formGroup label { display: block; font-size: 13px; font-weight: 500; margin-bottom: 6px; color: var(--color-text); }
+.formGroup input, .formGroup textarea { width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid #3f3f46; background: #09090b; color: #fff; font-size: 14px; box-sizing: border-box; }
+.formGroup input:focus, .formGroup textarea:focus { border-color: #6366f1; outline: none; }
+.formActions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 24px; }
+.cancelBtn { background: transparent; border: 1px solid #3f3f46; color: #d4d4d8; border-radius: 8px; padding: 8px 16px; cursor: pointer; }
+.submitBtn { background: #6366f1; border: none; color: #fff; border-radius: 8px; padding: 8px 20px; font-weight: 600; cursor: pointer; }
+.submitBtn:disabled { opacity: 0.5; cursor: not-allowed; }
+.errorMessage { background: #450a0a; border: 1px solid #b91c1c; color: #fca5a5; padding: 8px 12px; border-radius: 6px; font-size: 13px; margin-bottom: 16px; }

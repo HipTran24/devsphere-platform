@@ -1,6 +1,7 @@
 "use client";
 
 import { useId } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import AuthField from "./AuthField";
 import AuthAlternatives from "./AuthAlternatives";
@@ -41,11 +42,9 @@ export default function RegisterForm() {
                 <label className={styles.checkboxLabel}>
                     <input type="checkbox" name="terms" required disabled={form.isSubmitting}
                         aria-invalid={form.fieldErrors.terms ? true : undefined} aria-describedby={form.fieldErrors.terms ? errorMessageId : undefined} />
-                    <span>I agree to DevSphere’s Terms of Service</span>
+                    <span>I agree to DevSphere’s <Link className={styles.termsLink} href="/terms" target="_blank" rel="noopener noreferrer">Terms of Service</Link></span>
                 </label>
-                <button className={`devsphere-button devsphere-button-primary ${styles.registerSubmitButton}`}
-                    type="submit"
-                    disabled={form.isSubmitting}>
+                <button className={styles.primary} type="submit" disabled={form.isSubmitting}>
                     <span aria-live="polite">{form.isSubmitting ? "Creating account…" : "Create Account"}</span><ArrowIcon />
                 </button>
             </form>

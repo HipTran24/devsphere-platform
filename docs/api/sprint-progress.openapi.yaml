@@ -1,0 +1,667 @@
+openapi: 3.1.0
+info:
+  title: DevSphere Sprint Lifecycle & Progress Metrics API
+  version: 1.0.0
+  description: >
+    RESTful API endpoints for sprint planning, single-active-sprint state machine,
+    item assignment, sprint closure snapshotting, and burndown/velocity progress metrics.
+servers:
+  - url: /api/v1
+paths:
+  /workspaces/{workspaceId}/projects/{projectId}/sprints:
+    parameters:
+      - name: workspaceId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: projectId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    post:
+      summary: Create sprint
+      description: Creates a new sprint in PLANNED status. Requires PM role.
+      operationId: createSprint
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSprintRequest'
+      responses:
+        '201':
+          description: Sprint created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SprintResponse'
+        '400':
+          $ref: '#/components/responses/InvalidSprintDates'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+    get:
+      summary: List sprints
+      description: Returns project sprints ordered by startDate ASC, id ASC. Scoped to project members.
+      operationId: listSprints
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [PLANNED, ACTIVE, CLOSED]
+      responses:
+        '200':
+          description: List of sprints
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SprintResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /workspaces/{workspaceId}/projects/{projectId}/sprints/{sprintId}:
+    parameters:
+      - name: workspaceId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: projectId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: sprintId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    get:
+      summary: Get sprint details
+      description: Returns detailed information for a single sprint. Scoped to project members.
+      operationId: getSprint
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Sprint details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SprintResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    patch:
+      summary: Update sprint
+      description: Updates sprint metadata. Closed sprint metrics and dates are immutable. Requires PM role.
+      operationId: updateSprint
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateSprintRequest'
+      responses:
+        '200':
+          description: Sprint updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SprintResponse'
+        '400':
+          $ref: '#/components/responses/InvalidSprintDates'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/SprintClosed'
+
+  /workspaces/{workspaceId}/projects/{projectId}/sprints/{sprintId}/start:
+    parameters:
+      - name: workspaceId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: projectId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: sprintId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    post:
+      summary: Start sprint
+      description: Transitions sprint from PLANNED to ACTIVE and calculates committed points. Enforces single active sprint. Requires PM role.
+      operationId: startSprint
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StartSprintRequest'
+      responses:
+        '200':
+          description: Sprint started successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SprintResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/ActiveSprintExists'
+
+  /workspaces/{workspaceId}/projects/{projectId}/sprints/{sprintId}/close:
+    parameters:
+      - name: workspaceId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: projectId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: sprintId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    post:
+      summary: Close sprint
+      description: Transitions sprint from ACTIVE to CLOSED, snapshots completed points, and kicks incomplete items back to backlog. Requires PM role.
+      operationId: closeSprint
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CloseSprintRequest'
+      responses:
+        '200':
+          description: Sprint closed successfully with snapshot
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SprintResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/SprintClosed'
+
+  /workspaces/{workspaceId}/projects/{projectId}/sprints/{sprintId}/items:
+    parameters:
+      - name: workspaceId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: projectId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: sprintId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    post:
+      summary: Assign or modify sprint items
+      description: Assigns work items to the sprint (or removes them if action is REMOVE). Rejects modifying DONE items or closed sprints. Requires PM or Developer role.
+      operationId: addSprintItems
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SprintItemsRequest'
+      responses:
+        '200':
+          description: Items modified successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sprintId:
+                    type: string
+                    format: uuid
+                  itemCount:
+                    type: integer
+                  action:
+                    type: string
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/CannotModifyDoneItemSprint'
+
+    delete:
+      summary: Remove sprint items
+      description: Unassigns items from sprint back to backlog. Rejects modifying DONE items or closed sprints. Requires PM or Developer role.
+      operationId: removeSprintItems
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SprintItemsRequest'
+      responses:
+        '200':
+          description: Items removed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sprintId:
+                    type: string
+                    format: uuid
+                  itemCount:
+                    type: integer
+                  action:
+                    type: string
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/CannotModifyDoneItemSprint'
+
+  /workspaces/{workspaceId}/projects/{projectId}/sprints/{sprintId}/progress:
+    parameters:
+      - name: workspaceId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: projectId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: sprintId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    get:
+      summary: Get sprint progress & burndown metrics
+      description: Computes factual velocity, committed/completed/remaining points, status counts, time estimates, and blocked items count. Scoped to project members.
+      operationId: getSprintProgress
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Sprint progress metrics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SprintProgressResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    CreateSprintRequest:
+      type: object
+      required:
+        - name
+        - startDate
+        - endDate
+      properties:
+        name:
+          type: string
+          maxLength: 120
+          example: Sprint 1 - Foundation
+        goal:
+          type: string
+          example: Complete core authentication and workspace setup
+        startDate:
+          type: string
+          format: date
+          example: '2026-12-01'
+        endDate:
+          type: string
+          format: date
+          example: '2026-12-14'
+
+    UpdateSprintRequest:
+      type: object
+      required:
+        - expectedVersion
+      properties:
+        name:
+          type: string
+          maxLength: 120
+          example: Sprint 1 - Foundation Updated
+        goal:
+          type: string
+          example: Updated sprint goal
+        startDate:
+          type: string
+          format: date
+          example: '2026-12-01'
+        endDate:
+          type: string
+          format: date
+          example: '2026-12-15'
+        reviewNotes:
+          type: string
+          example: Completed all planned stories on time
+        retrospectiveNotes:
+          type: string
+          example: Need earlier code review turnaround
+        expectedVersion:
+          type: integer
+          minimum: 0
+          example: 0
+
+    StartSprintRequest:
+      type: object
+      properties:
+        expectedVersion:
+          type: integer
+          minimum: 0
+          example: 0
+
+    CloseSprintRequest:
+      type: object
+      properties:
+        reviewNotes:
+          type: string
+          example: Sprint demo completed with client stakeholder
+        retrospectiveNotes:
+          type: string
+          example: Action item - improve CI test execution speed
+        expectedVersion:
+          type: integer
+          minimum: 0
+          example: 1
+
+    SprintItemsRequest:
+      type: object
+      properties:
+        action:
+          type: string
+          enum: [ADD, REMOVE]
+          default: ADD
+        itemIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+        workItemIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+
+    SprintResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        projectId:
+          type: string
+          format: uuid
+        name:
+          type: string
+        goal:
+          type: string
+        startDate:
+          type: string
+          format: date
+        endDate:
+          type: string
+          format: date
+        status:
+          type: string
+          enum: [PLANNED, ACTIVE, CLOSED]
+        reviewNotes:
+          type: string
+        retrospectiveNotes:
+          type: string
+        committedPoints:
+          type: number
+          format: double
+        completedPoints:
+          type: number
+          format: double
+        closedAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        version:
+          type: integer
+
+    SprintProgressResponse:
+      type: object
+      properties:
+        sprintId:
+          type: string
+          format: uuid
+        sprintName:
+          type: string
+        status:
+          type: string
+          enum: [PLANNED, ACTIVE, CLOSED]
+        committedPoints:
+          type: number
+          format: double
+        completedPoints:
+          type: number
+          format: double
+        remainingPoints:
+          type: number
+          format: double
+        totalItems:
+          type: integer
+        doneItems:
+          type: integer
+        inProgressItems:
+          type: integer
+        inReviewItems:
+          type: integer
+        toDoItems:
+          type: integer
+        totalEstimateMinutes:
+          type: integer
+        totalRemainingMinutes:
+          type: integer
+        totalSpentMinutes:
+          type: integer
+        blockedCount:
+          type: integer
+
+    ProblemDetail:
+      type: object
+      required:
+        - status
+        - title
+        - code
+      properties:
+        type:
+          type: string
+          format: uri
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        instance:
+          type: string
+        code:
+          type: string
+
+  responses:
+    Unauthorized:
+      description: Authentication credentials missing or invalid
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+
+    Forbidden:
+      description: Insufficient project role permissions
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+
+    NotFound:
+      description: Requested sprint or resource not found
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+
+    ValidationFailed:
+      description: Request validation failed
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+
+    InvalidSprintDates:
+      description: Sprint end date must be strictly after start date
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+            example:
+              title: INVALID_SPRINT_DATES
+              status: 400
+              code: INVALID_SPRINT_DATES
+              detail: Sprint end date must be after start date
+
+    ActiveSprintExists:
+      description: Another sprint is already active in this project
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+            example:
+              title: ACTIVE_SPRINT_EXISTS
+              status: 409
+              code: ACTIVE_SPRINT_EXISTS
+              detail: Active sprint already exists in project
+
+    SprintClosed:
+      description: Action rejected because sprint is closed or closed sprint fields are immutable
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+            example:
+              title: SPRINT_CLOSED
+              status: 409
+              code: SPRINT_CLOSED
+              detail: Closed Sprint metrics and dates are immutable
+
+    CannotModifyDoneItemSprint:
+      description: Completed work items are frozen and cannot be reassigned or unassigned
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+            example:
+              title: CANNOT_MODIFY_DONE_ITEM_SPRINT
+              status: 409
+              code: CANNOT_MODIFY_DONE_ITEM_SPRINT
+              detail: Cannot modify sprint of completed work item
