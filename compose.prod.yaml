@@ -15,6 +15,7 @@ x-hardening: &hardening
     options:
       max-size: "10m"
       max-file: "5"
+      labels: "com.docker.compose.service"
 
 services:
   postgres:
@@ -111,7 +112,9 @@ services:
         condition: service_healthy
     environment:
       - SPRING_PROFILES_ACTIVE=prod
-      - JAVA_OPTS=${JAVA_OPTS:--XX:MaxRAMPercentage=75 -XX:+ExitOnOutOfMemoryError}
+      # The -D flag publishes HTTP latency histograms so p95 alerts and dashboards work.
+      - JAVA_OPTS=${JAVA_OPTS:--XX:MaxRAMPercentage=75 -XX:+ExitOnOutOfMemoryError -Dmanagement.metrics.distribution.percentiles-histogram.http.server.requests=true}
+      - DEVSPHERE_BACKUP_DIRECTORY=/backups
       - TZ=UTC
       - DATABASE_URL=jdbc:postgresql://postgres:5432/${DATABASE_NAME:-devsphere}
       - DATABASE_USER=${DATABASE_USER:-devsphere_app}
@@ -142,6 +145,9 @@ services:
       - DEVSPHERE_QUARTZ_CRON_GITHUB_BACKFILL
       - DEVSPHERE_QUARTZ_CRON_DAILY_REPORT
       - DEVSPHERE_QUARTZ_CRON_NIGHTLY_BACKUP
+    volumes:
+      # Read-only view of the encrypted backups so the nightly BACKUP_CHECK job can verify freshness.
+      - ${BACKUP_HOST_DIR:-./backups}:/backups:ro
     healthcheck:
       # Actuator is served on the internal management port 8081 by the prod profile.
       test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8081/actuator/health/readiness || exit 1"]
@@ -245,6 +251,124 @@ services:
     networks:
       - public_net
 
+  prometheus:
+    <<: *hardening
+    image: prom/prometheus:v3.15.1
+    container_name: devsphere-prometheus
+    depends_on:
+      backend:
+        condition: service_healthy
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=30d
+      - --web.enable-lifecycle
+    volumes:
+      - ./infra/monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./infra/monitoring/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      # Holds the short-lived admin bearer token written by infra/monitoring/refresh-scrape-token.sh.
+      - ./infra/monitoring/prometheus/secrets:/etc/prometheus/secrets:ro
+      - prometheus-data:/prometheus
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:9090/-/healthy || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 768m
+    networks:
+      - internal_net
+
+  loki:
+    <<: *hardening
+    image: grafana/loki:3.5.0
+    container_name: devsphere-loki
+    command: ["-config.file=/etc/loki/loki-config.yml"]
+    volumes:
+      - ./infra/monitoring/loki/loki-config.yml:/etc/loki/loki-config.yml:ro
+      - loki-data:/loki
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:3100/ready || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 768m
+    networks:
+      - internal_net
+
+  alloy:
+    <<: *hardening
+    image: grafana/alloy:v1.9.0
+    container_name: devsphere-alloy
+    depends_on:
+      loki:
+        condition: service_healthy
+    command:
+      - run
+      - --server.http.listen-addr=0.0.0.0:12345
+      - --storage.path=/var/lib/alloy/data
+      - /etc/alloy/config.alloy
+    volumes:
+      - ./infra/monitoring/alloy/config.alloy:/etc/alloy/config.alloy:ro
+      # Read-only access to json-file container logs; the Docker socket is NOT mounted.
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - alloy-data:/var/lib/alloy/data
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 384m
+    networks:
+      - internal_net
+
+  grafana:
+    <<: *hardening
+    image: grafana/grafana:12.0.0
+    container_name: devsphere-grafana
+    depends_on:
+      prometheus:
+        condition: service_healthy
+      loki:
+        condition: service_healthy
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?Set GRAFANA_ADMIN_PASSWORD in .env}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_SECURITY_COOKIE_SECURE: "false"
+    volumes:
+      - ./infra/monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infra/monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    # Loopback only: reach it with `ssh -L 3001:127.0.0.1:3001 <host>`. Never expose Grafana publicly.
+    ports:
+      - "127.0.0.1:3001:3000"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:3000/api/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512m
+    networks:
+      # public_net is required for the loopback port mapping (internal networks cannot publish ports).
+      - internal_net
+      - public_net
+
 networks:
   public_net:
     driver: bridge
@@ -257,3 +381,7 @@ volumes:
   redis-data:
   certbot-conf:
   certbot-www:
+  prometheus-data:
+  loki-data:
+  alloy-data:
+  grafana-data:
