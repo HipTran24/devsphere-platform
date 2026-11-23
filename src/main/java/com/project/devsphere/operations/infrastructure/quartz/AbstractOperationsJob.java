@@ -1,10 +1,12 @@
 package com.project.devsphere.operations.infrastructure.quartz;
 
+import com.project.devsphere.operations.infrastructure.metrics.OperationsMetrics;
 import org.quartz.JobExecutionContext;
 import org.quartz.JobExecutionException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.quartz.QuartzJobBean;
 
 import java.util.Map;
@@ -20,6 +22,14 @@ public abstract class AbstractOperationsJob extends QuartzJobBean {
 
     private static final Logger log = LoggerFactory.getLogger(AbstractOperationsJob.class);
     static final String TRACE_ID_MDC_KEY = "traceId";
+
+    private OperationsMetrics metrics;
+
+    /** Optional telemetry recording devsphere_quartz_job_executions_total and job duration. */
+    @Autowired(required = false)
+    public void setOperationsMetrics(OperationsMetrics metrics) {
+        this.metrics = metrics;
+    }
 
     /** Stable job name used for the Quartz JobKey, metrics and audit records. */
     public abstract String jobName();
@@ -51,8 +61,11 @@ public abstract class AbstractOperationsJob extends QuartzJobBean {
         }
     }
 
-    /** Hook invoked after every run with its outcome and duration in nanoseconds. */
+    /** Invoked after every run with its outcome and duration in nanoseconds. */
     protected void afterRun(boolean success, long durationNanos) {
+        if (metrics != null) {
+            metrics.recordQuartzJob(jobName(), success, durationNanos);
+        }
     }
 
     private static long elapsedMillis(long startedNanos) {
