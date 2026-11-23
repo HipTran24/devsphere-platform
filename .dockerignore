@@ -1,0 +1,23 @@
+# Keep the backend build context small and free of secrets.
+.git
+.github
+.idea
+.vscode
+.ai-runs
+.tools
+.env
+.env.*
+!.env.example
+target
+delivery
+docs
+tests
+scripts
+infra
+frontend
+compose*.yaml
+**/__pycache__
+HELP.md
+*.md
+!README.md
+.mvn/wrapper/maven-wrapper.jar
