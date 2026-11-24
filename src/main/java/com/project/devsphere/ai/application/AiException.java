@@ -44,4 +44,12 @@ public class AiException extends RuntimeException {
     public static AiException unprocessable(String code, String message) {
         return new AiException(HttpStatus.UNPROCESSABLE_ENTITY, code, message);
     }
+
+    public static AiException unavailable(String message) {
+        return new AiException(HttpStatus.SERVICE_UNAVAILABLE, "AI_UNAVAILABLE", message);
+    }
+
+    public static AiException conflict(String code, String message) {
+        return new AiException(HttpStatus.CONFLICT, code, message);
+    }
 }

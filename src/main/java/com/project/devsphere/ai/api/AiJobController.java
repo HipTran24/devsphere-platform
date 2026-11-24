@@ -4,9 +4,12 @@ import com.project.devsphere.ai.api.dto.AiJobResponse;
 import com.project.devsphere.ai.api.dto.CompleteAiJobRequest;
 import com.project.devsphere.ai.api.dto.CreateAiJobRequest;
 import com.project.devsphere.ai.application.AiException;
+import com.project.devsphere.ai.application.AiExecutionService;
 import com.project.devsphere.ai.application.AiJobService;
 import com.project.devsphere.identity.application.SessionService;
 import jakarta.validation.Valid;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -27,9 +30,16 @@ import java.util.UUID;
 public class AiJobController {
 
     private final AiJobService aiJobService;
+    private final ObjectProvider<AiExecutionService> aiExecutionService;
 
     public AiJobController(AiJobService aiJobService) {
+        this(aiJobService, null);
+    }
+
+    @Autowired
+    public AiJobController(AiJobService aiJobService, ObjectProvider<AiExecutionService> aiExecutionService) {
         this.aiJobService = Objects.requireNonNull(aiJobService, "aiJobService must not be null");
+        this.aiExecutionService = aiExecutionService;
     }
 
     @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE)
@@ -65,6 +75,21 @@ public class AiJobController {
             @Valid @RequestBody CompleteAiJobRequest request) {
 
         AiJobResponse response = aiJobService.completeJob(principal, workspaceId, projectId, jobId, request);
+        return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/{jobId}/execute")
+    public ResponseEntity<AiJobResponse> executeJob(
+            @AuthenticationPrincipal SessionService.Principal principal,
+            @PathVariable UUID workspaceId,
+            @PathVariable UUID projectId,
+            @PathVariable UUID jobId) {
+
+        AiExecutionService executionService = aiExecutionService == null ? null : aiExecutionService.getIfAvailable();
+        if (executionService == null) {
+            throw AiException.unavailable("AI execution service is unavailable");
+        }
+        AiJobResponse response = executionService.executeJob(principal, workspaceId, projectId, jobId);
         return ResponseEntity.ok(response);
     }
 

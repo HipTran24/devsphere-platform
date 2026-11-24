@@ -1,5 +1,6 @@
 package com.project.devsphere.communication.application;
 
+import com.project.devsphere.ai.application.AiExecutionService;
 import com.project.devsphere.communication.api.dto.ChatMessageResponse;
 import com.project.devsphere.communication.domain.ChatChannel;
 import com.project.devsphere.communication.domain.ChatChannelMember;
@@ -14,6 +15,8 @@ import com.project.devsphere.identity.domain.ProjectRole;
 import com.project.devsphere.notification.application.NotificationService;
 import com.project.devsphere.notification.domain.Notification;
 import com.project.devsphere.realtime.application.RealtimeEventPublisher;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
@@ -21,15 +24,23 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.regex.Pattern;
 
 @Service
 @Transactional
 public class ChatService {
+
+    private static final Logger log = LoggerFactory.getLogger(ChatService.class);
+    private static final Pattern PROJECT_AI_MENTION = Pattern.compile("(?i)(?:^|[^\\w.])@projectai(?![\\w-])");
 
     private final ChatChannelRepository chatChannelRepository;
     private final ChatChannelMemberRepository chatChannelMemberRepository;
@@ -38,6 +49,7 @@ public class ChatService {
     private final NotificationService notificationService;
     private final JdbcTemplate jdbcTemplate;
     private final ObjectProvider<RealtimeEventPublisher> realtimeEventPublisher;
+    private final ObjectProvider<AiExecutionService> aiExecutionService;
 
     public ChatService(
             ChatChannelRepository chatChannelRepository,
@@ -47,7 +59,19 @@ public class ChatService {
             NotificationService notificationService,
             JdbcTemplate jdbcTemplate) {
         this(chatChannelRepository, chatChannelMemberRepository, chatMessageRepository,
-                accessPolicy, notificationService, jdbcTemplate, null);
+                accessPolicy, notificationService, jdbcTemplate, null, null);
+    }
+
+    public ChatService(
+            ChatChannelRepository chatChannelRepository,
+            ChatChannelMemberRepository chatChannelMemberRepository,
+            ChatMessageRepository chatMessageRepository,
+            AccessPolicy accessPolicy,
+            NotificationService notificationService,
+            JdbcTemplate jdbcTemplate,
+            ObjectProvider<RealtimeEventPublisher> realtimeEventPublisher) {
+        this(chatChannelRepository, chatChannelMemberRepository, chatMessageRepository,
+                accessPolicy, notificationService, jdbcTemplate, realtimeEventPublisher, null);
     }
 
     @Autowired
@@ -58,7 +82,8 @@ public class ChatService {
             AccessPolicy accessPolicy,
             NotificationService notificationService,
             JdbcTemplate jdbcTemplate,
-            ObjectProvider<RealtimeEventPublisher> realtimeEventPublisher) {
+            ObjectProvider<RealtimeEventPublisher> realtimeEventPublisher,
+            ObjectProvider<AiExecutionService> aiExecutionService) {
         this.chatChannelRepository = Objects.requireNonNull(chatChannelRepository, "chatChannelRepository must not be null");
         this.chatChannelMemberRepository = Objects.requireNonNull(chatChannelMemberRepository, "chatChannelMemberRepository must not be null");
         this.chatMessageRepository = Objects.requireNonNull(chatMessageRepository, "chatMessageRepository must not be null");
@@ -66,6 +91,7 @@ public class ChatService {
         this.notificationService = Objects.requireNonNull(notificationService, "notificationService must not be null");
         this.jdbcTemplate = Objects.requireNonNull(jdbcTemplate, "jdbcTemplate must not be null");
         this.realtimeEventPublisher = realtimeEventPublisher;
+        this.aiExecutionService = aiExecutionService;
     }
 
     public ChatChannel createChannel(
@@ -316,7 +342,81 @@ public class ChatService {
             publisher.publishChatMessage(workspaceId, projectId, channelId, ChatMessageResponse.from(saved));
         }
 
+        // Best-effort post-commit @ProjectAI reply trigger (HTTP I/O runs strictly outside ChatService tx)
+        AiExecutionService aiExec = aiExecutionService == null ? null : aiExecutionService.getIfAvailable();
+        if (aiExec != null && saved != null && projectId != null && containsProjectAiMention(saved.getBody())) {
+            UUID savedMessageId = saved.getId();
+            String promptBody = saved.getBody();
+            Runnable aiTrigger = () -> triggerProjectAiBestEffort(
+                    aiExec, principal, workspaceId, projectId, channelId, savedMessageId, promptBody);
+            if (TransactionSynchronizationManager.isSynchronizationActive()) {
+                TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                    @Override
+                    public void afterCommit() {
+                        aiTrigger.run();
+                    }
+                });
+            } else {
+                aiTrigger.run();
+            }
+        }
+
         return saved;
+    }
+
+    private static boolean containsProjectAiMention(String body) {
+        return body != null && PROJECT_AI_MENTION.matcher(body).find();
+    }
+
+    private void triggerProjectAiBestEffort(
+            AiExecutionService aiExec,
+            SessionService.Principal principal,
+            UUID workspaceId,
+            UUID projectId,
+            UUID channelId,
+            UUID userMessageId,
+            String promptBody) {
+        try {
+            aiExec.executeProjectAiChat(
+                    principal,
+                    workspaceId,
+                    projectId,
+                    channelId,
+                    userMessageId,
+                    promptBody,
+                    (aiJobId, replyBody, modelName) -> {
+                        ChatMessage aiMessage = new ChatMessage();
+                        aiMessage.setWorkspaceId(workspaceId);
+                        aiMessage.setProjectId(projectId);
+                        aiMessage.setChannelId(channelId);
+                        aiMessage.setSenderId(null);
+                        aiMessage.setSenderKind(ChatMessage.SenderKind.AI);
+                        aiMessage.setAiJobId(aiJobId);
+                        aiMessage.setReplyToId(userMessageId);
+                        aiMessage.setBody(replyBody);
+                        aiMessage.setMentions(new UUID[0]);
+                        Map<String, Object> provenance = new LinkedHashMap<>();
+                        provenance.put("schemaVersion", 1);
+                        provenance.put("aiJobId", aiJobId.toString());
+                        if (modelName != null && !modelName.isBlank()) {
+                            provenance.put("model", modelName);
+                        }
+                        aiMessage.setProvenance(provenance);
+                        aiMessage.setSentAt(Instant.now());
+                        aiMessage.setVersion(0L);
+
+                        ChatMessage savedReply = chatMessageRepository.save(aiMessage);
+                        RealtimeEventPublisher publisher = realtimeEventPublisher == null
+                                ? null : realtimeEventPublisher.getIfAvailable();
+                        if (publisher != null) {
+                            publisher.publishChatMessage(
+                                    workspaceId, projectId, channelId, ChatMessageResponse.from(savedReply));
+                        }
+                    }
+            );
+        } catch (RuntimeException ex) {
+            log.warn("Best-effort @ProjectAI hook failed for message {}: {}", userMessageId, ex.getMessage());
+        }
     }
 
     @Transactional(readOnly = true)
