@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import { FolderPlus } from "lucide-react";
 import WorkItemRow from "./WorkItemRow";
 import EmptyState from "../../../components/ui/EmptyState";
 import { flattenTree } from "../utils/tree-utils";
+import useKeyboardList from "../../../hooks/useKeyboardList";
 import styles from "../styles/WorkItemTree.module.css";
 
 export default function WorkItemTree({
@@ -13,7 +14,7 @@ export default function WorkItemTree({
   onCreateClick,
 }) {
   const [collapsedIds, setCollapsedIds] = useState(() => new Set());
-  const [focusedIndex, setFocusedIndex] = useState(-1);
+  const rowRefs = useRef([]);
 
   const toggleCollapse = useCallback((id) => {
     setCollapsedIds((prev) => {
@@ -30,6 +31,18 @@ export default function WorkItemTree({
   const visibleRows = useMemo(() => {
     return flattenTree(treeNodes, collapsedIds);
   }, [treeNodes, collapsedIds]);
+
+  const { activeIndex, setActiveIndex, handleKeyDown } = useKeyboardList({
+    count: visibleRows.length,
+    initialIndex: 0,
+    wrap: true,
+  });
+
+  useEffect(() => {
+    if (activeIndex >= 0 && rowRefs.current[activeIndex]) {
+      rowRefs.current[activeIndex].focus();
+    }
+  }, [activeIndex]);
 
   if (visibleRows.length === 0) {
     return (
@@ -51,6 +64,11 @@ export default function WorkItemTree({
       role="table"
       aria-label="Backlog Work Items Tree"
       aria-rowcount={visibleRows.length}
+      onKeyDown={(e) => {
+        if (e.key === "ArrowUp" || e.key === "ArrowDown" || e.key === "Home" || e.key === "End") {
+          handleKeyDown(e);
+        }
+      }}
     >
       <div className={styles.tableHeader} role="row">
         <span role="columnheader">Item / Title</span>
@@ -72,8 +90,11 @@ export default function WorkItemTree({
             hasChildren={row.hasChildren}
             onToggleCollapse={toggleCollapse}
             onItemClick={onItemClick}
-            isFocused={focusedIndex === index}
-            onFocus={() => setFocusedIndex(index)}
+            isFocused={activeIndex === index}
+            onFocus={() => setActiveIndex(index)}
+            ref={(el) => {
+              rowRefs.current[index] = el;
+            }}
           />
         ))}
       </div>

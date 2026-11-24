@@ -74,6 +74,8 @@ export default function WorkItemRow({
   onToggleCollapse,
   onItemClick,
   isFocused = false,
+  onFocus,
+  ref,
 }) {
   const typeDetails = getTypeDetails(item.type);
   const TypeIcon = typeDetails.icon;
@@ -101,6 +103,8 @@ export default function WorkItemRow({
 
   return (
     <div
+      ref={ref}
+      onFocus={onFocus}
       className={`${styles.itemRow} ${isFocused ? styles.itemRowFocused : ""} ${item.isBlocked ? styles.itemRowBlocked : ""}`}
       style={{ paddingLeft: `${16 + depth * 22}px` }}
       onClick={() => onItemClick(item)}
