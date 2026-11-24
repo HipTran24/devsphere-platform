@@ -416,6 +416,136 @@ class WebSocketRealtimeIntegrationTest {
         }
     }
 
+    @Test
+    @DisplayName("Client STOMP SEND is rejected and never injects forged messages into tenant topics")
+    void clientStompSendIsRejectedAndCannotInjectMessages() throws Exception {
+        Fixture f = createFixture();
+        ChatChannel teamChannel = chatService.createChannel(
+                f.ownerPrincipal(), f.workspaceId(), f.projectId(), ChatChannel.Type.TEAM, "protected-room", null);
+        chatService.addMember(f.ownerPrincipal(), f.workspaceId(), f.projectId(), teamChannel.getId(), f.devId());
+
+        String chatDest = "/topic/workspaces/" + f.workspaceId() + "/projects/" + f.projectId() + "/chat/" + teamChannel.getId();
+
+        WebSocketStompClient victimClient = new WebSocketStompClient(new StandardWebSocketClient());
+        victimClient.setMessageConverter(new JacksonJsonMessageConverter());
+
+        CompletableFuture<Throwable> attackerError = new CompletableFuture<>();
+        CompletableFuture<CloseStatus> attackerClose = new CompletableFuture<>();
+        WebSocketStompClient attackerClient = new WebSocketStompClient(
+                new CloseStatusCapturingWebSocketClient(new StandardWebSocketClient(), attackerClose));
+        attackerClient.setMessageConverter(new JacksonJsonMessageConverter());
+
+        try {
+            StompHeaders victimHeaders = new StompHeaders();
+            victimHeaders.add("Authorization", "Bearer " + f.devToken());
+            StompSession victimSession = victimClient.connectAsync(
+                    wsUrl(), new WebSocketHttpHeaders(), victimHeaders, new StompSessionHandlerAdapter() {}
+            ).get(5, TimeUnit.SECONDS);
+
+            BlockingQueue<String> victimFrames = new LinkedBlockingQueue<>();
+            victimSession.subscribe(chatDest, new QueueFrameHandler(victimFrames));
+            Thread.sleep(250);
+
+            StompHeaders attackerHeaders = new StompHeaders();
+            attackerHeaders.add("Authorization", "Bearer " + f.clientToken());
+            StompSession attackerSession = attackerClient.connectAsync(
+                    wsUrl(),
+                    new WebSocketHttpHeaders(),
+                    attackerHeaders,
+                    new StompSessionHandlerAdapter() {
+                        @Override
+                        public void handleException(
+                                StompSession s, StompCommand command, StompHeaders h, byte[] payload, Throwable exception) {
+                            attackerError.complete(exception);
+                        }
+
+                        @Override
+                        public void handleTransportError(StompSession s, Throwable exception) {
+                            attackerError.complete(exception);
+                        }
+                    }
+            ).get(5, TimeUnit.SECONDS);
+
+            attackerSession.send(chatDest, Map.of("eventType", "SPOOFED", "body", "injected"));
+
+            Object outcome = CompletableFuture.anyOf(attackerError, attackerClose).get(5, TimeUnit.SECONDS);
+            assertThat(outcome).isNotNull();
+            assertThat(victimFrames.poll(500, TimeUnit.MILLISECONDS)).isNull();
+
+            victimSession.disconnect();
+        } finally {
+            attackerClient.stop();
+            victimClient.stop();
+        }
+    }
+
+    @Test
+    @DisplayName("SessionService.logout and SessionService.revoke immediately disconnect active WebSocket sessions with POLICY_VIOLATION (1008)")
+    void sessionLogoutAndRevokeDisconnectActiveWebSocketSessions() throws Exception {
+        Fixture f = createFixture();
+        String devEmail = jdbc.queryForObject("SELECT email::text FROM users WHERE id = ?", String.class, f.devId());
+
+        // 1. Login session A -> connect WS -> logout(refreshA) -> WS closed with 1008
+        SessionService.Attempt loginA = sessionService.login(devEmail, TEST_PASSWORD);
+        assertThat(loginA.outcome()).isEqualTo(SessionService.Outcome.SUCCESS);
+
+        CompletableFuture<CloseStatus> closeOnLogout = new CompletableFuture<>();
+        WebSocketStompClient clientA = new WebSocketStompClient(
+                new CloseStatusCapturingWebSocketClient(new StandardWebSocketClient(), closeOnLogout));
+        clientA.setMessageConverter(new JacksonJsonMessageConverter());
+
+        try {
+            StompHeaders headersA = new StompHeaders();
+            headersA.add("Authorization", "Bearer " + loginA.access().value());
+            StompSession sessionA = clientA.connectAsync(
+                    wsUrl(), new WebSocketHttpHeaders(), headersA, new StompSessionHandlerAdapter() {}
+            ).get(5, TimeUnit.SECONDS);
+            sessionA.subscribe("/user/queue/notifications", new QueueFrameHandler(new LinkedBlockingQueue<>()));
+            Thread.sleep(200);
+
+            sessionService.logout(loginA.refresh());
+
+            CloseStatus logoutStatus = closeOnLogout.get(5, TimeUnit.SECONDS);
+            assertThat(logoutStatus.getCode()).isEqualTo(CloseStatus.POLICY_VIOLATION.getCode());
+            assertThat(sessionA.isConnected()).isFalse();
+        } finally {
+            clientA.stop();
+        }
+
+        // 2. Login session B & session C -> connect WS with B -> revoke B's family from C -> B's WS closed with 1008
+        SessionService.Attempt loginB = sessionService.login(devEmail, TEST_PASSWORD);
+        SessionService.Attempt loginC = sessionService.login(devEmail, TEST_PASSWORD);
+        SessionService.Principal principalC = sessionService.authenticate(loginC.access().value()).orElseThrow();
+        UUID familyB = sessionService.list(principalC).stream()
+                .filter(s -> !s.current())
+                .map(SessionService.SessionSummary::familyId)
+                .findFirst()
+                .orElseThrow();
+
+        CompletableFuture<CloseStatus> closeOnRevoke = new CompletableFuture<>();
+        WebSocketStompClient clientB = new WebSocketStompClient(
+                new CloseStatusCapturingWebSocketClient(new StandardWebSocketClient(), closeOnRevoke));
+        clientB.setMessageConverter(new JacksonJsonMessageConverter());
+
+        try {
+            StompHeaders headersB = new StompHeaders();
+            headersB.add("Authorization", "Bearer " + loginB.access().value());
+            StompSession sessionB = clientB.connectAsync(
+                    wsUrl(), new WebSocketHttpHeaders(), headersB, new StompSessionHandlerAdapter() {}
+            ).get(5, TimeUnit.SECONDS);
+            sessionB.subscribe("/user/queue/notifications", new QueueFrameHandler(new LinkedBlockingQueue<>()));
+            Thread.sleep(200);
+
+            assertThat(sessionService.revoke(principalC, familyB)).isTrue();
+
+            CloseStatus revokeStatus = closeOnRevoke.get(5, TimeUnit.SECONDS);
+            assertThat(revokeStatus.getCode()).isEqualTo(CloseStatus.POLICY_VIOLATION.getCode());
+            assertThat(sessionB.isConnected()).isFalse();
+        } finally {
+            clientB.stop();
+        }
+    }
+
     private void assertSubscribeDenied(String bearerToken, String destination) throws Exception {
         CompletableFuture<Throwable> errorFuture = new CompletableFuture<>();
         CompletableFuture<CloseStatus> closeFuture = new CompletableFuture<>();

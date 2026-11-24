@@ -67,16 +67,25 @@ public class QueryParamRejectHandshakeInterceptor implements HandshakeIntercepto
             }
             int eq = pair.indexOf('=');
             String rawKey = eq >= 0 ? pair.substring(0, eq) : pair;
-            String decodedKey = URLDecoder.decode(rawKey, StandardCharsets.UTF_8).trim().toLowerCase(Locale.ROOT);
+            String decodedKey;
+            try {
+                decodedKey = URLDecoder.decode(rawKey, StandardCharsets.UTF_8).trim().toLowerCase(Locale.ROOT);
+            } catch (IllegalArgumentException ex) {
+                return true;
+            }
             if (FORBIDDEN_QUERY_PARAMS.contains(decodedKey)) {
                 return true;
             }
         }
-        MultiValueMap<String, String> params = UriComponentsBuilder.fromUri(uri).build().getQueryParams();
-        for (String key : params.keySet()) {
-            if (key != null && FORBIDDEN_QUERY_PARAMS.contains(key.trim().toLowerCase(Locale.ROOT))) {
-                return true;
+        try {
+            MultiValueMap<String, String> params = UriComponentsBuilder.fromUri(uri).build().getQueryParams();
+            for (String key : params.keySet()) {
+                if (key != null && FORBIDDEN_QUERY_PARAMS.contains(key.trim().toLowerCase(Locale.ROOT))) {
+                    return true;
+                }
             }
+        } catch (IllegalArgumentException ex) {
+            return true;
         }
         return false;
     }

@@ -266,6 +266,122 @@ class StompJwtChannelInterceptorTest {
         assertThat(sessionRegistry.isSessionRegistered("ws-disc")).isFalse();
     }
 
+    @Test
+    @DisplayName("SEND frames are default-denied even for authenticated sessions")
+    void sendFramesAreDefaultDenied() {
+        StompHeaderAccessor send = StompHeaderAccessor.create(StompCommand.SEND);
+        send.setSessionId("ws-auth");
+        send.setDestination("/topic/workspaces/" + workspaceId + "/projects/" + projectId + "/chat/" + channelId);
+        send.setUser(new StompJwtChannelInterceptor.StompUserPrincipal(principal));
+
+        assertThatThrownBy(() -> interceptor.preSend(MessageBuilder.createMessage(new byte[0], send.getMessageHeaders()), channel))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessageContaining("SEND");
+    }
+
+    @Test
+    @DisplayName("STOMP 1.2 STOMP command enforces Bearer auth and session limits identically to CONNECT")
+    void stomp12CommandAuthenticatesAndEnforcesSessionLimits() {
+        RealtimeSessionRegistry tightRegistry = new RealtimeSessionRegistry(1);
+        StompJwtChannelInterceptor tightInterceptor = new StompJwtChannelInterceptor(
+                sessionService, accessPolicy, jdbcTemplate, tightRegistry);
+
+        // Unauthenticated STOMP frame rejected
+        StompHeaderAccessor unauth = StompHeaderAccessor.create(StompCommand.STOMP);
+        unauth.setSessionId("ws-stomp-unauth");
+        assertThatThrownBy(() -> tightInterceptor.preSend(
+                MessageBuilder.createMessage(new byte[0], unauth.getMessageHeaders()), channel))
+                .isInstanceOf(AccessDeniedException.class);
+
+        // Valid STOMP frame authenticated and registered
+        when(sessionService.authenticate("valid-stomp-token")).thenReturn(Optional.of(principal));
+        Map<String, Object> attrs = new HashMap<>();
+        StompHeaderAccessor valid = StompHeaderAccessor.create(StompCommand.STOMP);
+        valid.setSessionId("ws-stomp-1");
+        valid.setSessionAttributes(attrs);
+        valid.setNativeHeader("Authorization", "Bearer valid-stomp-token");
+        valid.setLeaveMutable(true);
+
+        Message<?> result = tightInterceptor.preSend(
+                MessageBuilder.createMessage(new byte[0], valid.getMessageHeaders()), channel);
+        StompHeaderAccessor out = StompHeaderAccessor.wrap(result);
+        assertThat(out.getUser()).isNotNull();
+        assertThat(out.getUser().getName()).isEqualTo(userId.toString());
+        assertThat(tightRegistry.isSessionRegistered("ws-stomp-1")).isTrue();
+
+        // Second STOMP frame for same user hits max-sessions-per-user limit
+        StompHeaderAccessor second = StompHeaderAccessor.create(StompCommand.STOMP);
+        second.setSessionId("ws-stomp-2");
+        second.setNativeHeader("Authorization", "Bearer valid-stomp-token");
+        assertThatThrownBy(() -> tightInterceptor.preSend(
+                MessageBuilder.createMessage(new byte[0], second.getMessageHeaders()), channel))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessageContaining("Maximum concurrent real-time sessions exceeded");
+    }
+
+    @Test
+    @DisplayName("Unexpected STOMP client commands (BEGIN/COMMIT/ABORT) are rejected while heartbeats and authenticated ACK/NACK pass")
+    void unexpectedCommandsRejectedWhileHeartbeatAndAuthAckPass() {
+        for (StompCommand cmd : List.of(StompCommand.BEGIN, StompCommand.COMMIT, StompCommand.ABORT)) {
+            StompHeaderAccessor accessor = StompHeaderAccessor.create(cmd);
+            accessor.setSessionId("ws-1");
+            accessor.setUser(new StompJwtChannelInterceptor.StompUserPrincipal(principal));
+            assertThatThrownBy(() -> interceptor.preSend(
+                    MessageBuilder.createMessage(new byte[0], accessor.getMessageHeaders()), channel))
+                    .isInstanceOf(AccessDeniedException.class);
+        }
+
+        // Unauthenticated ACK/NACK rejected
+        for (StompCommand cmd : List.of(StompCommand.ACK, StompCommand.NACK)) {
+            StompHeaderAccessor unauth = StompHeaderAccessor.create(cmd);
+            unauth.setSessionId("ws-1");
+            assertThatThrownBy(() -> interceptor.preSend(
+                    MessageBuilder.createMessage(new byte[0], unauth.getMessageHeaders()), channel))
+                    .isInstanceOf(AccessDeniedException.class);
+
+            StompHeaderAccessor auth = StompHeaderAccessor.create(cmd);
+            auth.setSessionId("ws-1");
+            auth.setUser(new StompJwtChannelInterceptor.StompUserPrincipal(principal));
+            assertThat(interceptor.preSend(MessageBuilder.createMessage(new byte[0], auth.getMessageHeaders()), channel))
+                    .isNotNull();
+        }
+
+        // Heartbeat (no STOMP command) passes through
+        StompHeaderAccessor heartbeat = StompHeaderAccessor.createForHeartbeat();
+        Message<byte[]> hbMsg = MessageBuilder.createMessage(new byte[0], heartbeat.getMessageHeaders());
+        assertThat(interceptor.preSend(hbMsg, channel)).isSameAs(hbMsg);
+    }
+
+    @Test
+    @DisplayName("SUBSCRIBE to chat channel with unknown channel type is strictly default-denied")
+    void subscribeUnknownChatChannelTypeIsDenied() {
+        String dest = "/topic/workspaces/" + workspaceId + "/projects/" + projectId + "/chat/" + channelId;
+        when(accessPolicy.requireProjectMember(principal, workspaceId, projectId))
+                .thenReturn(new ProjectScope(workspaceId, projectId, userId, Set.of(ProjectRole.PM)));
+        when(jdbcTemplate.query(anyString(), any(RowMapper.class), eq(channelId), eq(workspaceId), eq(projectId), eq(userId)))
+                .thenReturn(List.of("UNKNOWN_CUSTOM_TYPE"));
+
+        assertThatThrownBy(() -> interceptor.preSend(subscribeMessage("ws-1", "sub-unknown-type", dest), channel))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessageContaining("Unsupported chat channel type");
+    }
+
+    @Test
+    @DisplayName("Handshake rejects malformed percent-encoding (?foo%ZZ=1) with 401 instead of throwing 500")
+    void handshakeRejectsMalformedPercentEscapeWith401() {
+        ServerHttpRequest request = mock(ServerHttpRequest.class);
+        ServerHttpResponse response = mock(ServerHttpResponse.class);
+        URI malformedUri = mock(URI.class);
+        when(malformedUri.getRawQuery()).thenReturn("foo%ZZ=1");
+        when(request.getURI()).thenReturn(malformedUri);
+
+        Map<String, Object> attrs = new HashMap<>();
+        boolean allowed = handshakeInterceptor.beforeHandshake(request, response, mock(WebSocketHandler.class), attrs);
+
+        assertThat(allowed).isFalse();
+        verify(response).setStatusCode(HttpStatus.UNAUTHORIZED);
+    }
+
     private Message<byte[]> subscribeMessage(String sessionId, String subId, String destination) {
         StompHeaderAccessor accessor = StompHeaderAccessor.create(StompCommand.SUBSCRIBE);
         accessor.setSessionId(sessionId);

@@ -79,7 +79,7 @@ public class StompJwtChannelInterceptor implements ChannelInterceptor {
 
         StompCommand command = accessor.getCommand();
         return switch (command) {
-            case CONNECT -> handleConnect(message, accessor);
+            case CONNECT, STOMP -> handleConnect(message, accessor);
             case SUBSCRIBE -> {
                 handleSubscribe(accessor);
                 yield message;
@@ -92,13 +92,14 @@ public class StompJwtChannelInterceptor implements ChannelInterceptor {
                 handleDisconnect(accessor);
                 yield message;
             }
-            case SEND -> {
+            case ACK, NACK -> {
                 if (resolvePrincipal(accessor) == null) {
                     throw new AccessDeniedException("Authentication required");
                 }
                 yield message;
             }
-            default -> message;
+            case SEND -> throw new AccessDeniedException("Client STOMP SEND frames are not permitted");
+            default -> throw new AccessDeniedException("STOMP command not permitted: " + command);
         };
     }
 
@@ -227,6 +228,10 @@ public class StompJwtChannelInterceptor implements ChannelInterceptor {
             if (!scope.hasRole(ProjectRole.PM) && !scope.hasRole(ProjectRole.CLIENT)) {
                 throw new AccessDeniedException("CLIENT_PM channel requires CLIENT or PM role");
             }
+        } else if ("PRIVATE".equals(normalizedType)) {
+            // Active chat_channel_members membership already verified above
+        } else {
+            throw new AccessDeniedException("Unsupported chat channel type");
         }
     }
 
