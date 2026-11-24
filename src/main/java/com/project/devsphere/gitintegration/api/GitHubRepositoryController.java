@@ -3,14 +3,20 @@ package com.project.devsphere.gitintegration.api;
 import com.project.devsphere.gitintegration.api.dto.ConnectRepositoryRequest;
 import com.project.devsphere.gitintegration.api.dto.GitHubActivityResponse;
 import com.project.devsphere.gitintegration.api.dto.GitHubRepositoryResponse;
+import com.project.devsphere.gitintegration.api.dto.GitHubSyncSummaryResponse;
 import com.project.devsphere.gitintegration.application.GitHubActivitySyncService;
 import com.project.devsphere.gitintegration.application.GitHubException;
+import com.project.devsphere.gitintegration.application.GitHubRemoteSyncService;
 import com.project.devsphere.gitintegration.application.GitHubRepositoryService;
 import com.project.devsphere.gitintegration.domain.GitHubRepository;
+import com.project.devsphere.gitintegration.infrastructure.GitHubApiUnavailableException;
 import com.project.devsphere.identity.application.SessionService;
 import jakarta.validation.Valid;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.CacheControl;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
@@ -39,12 +45,22 @@ public class GitHubRepositoryController {
 
     private final GitHubRepositoryService repositoryService;
     private final GitHubActivitySyncService activitySyncService;
+    private final ObjectProvider<GitHubRemoteSyncService> remoteSyncServiceProvider;
+
+    @Autowired
+    public GitHubRepositoryController(
+            GitHubRepositoryService repositoryService,
+            GitHubActivitySyncService activitySyncService,
+            ObjectProvider<GitHubRemoteSyncService> remoteSyncServiceProvider) {
+        this.repositoryService = Objects.requireNonNull(repositoryService, "repositoryService must not be null");
+        this.activitySyncService = Objects.requireNonNull(activitySyncService, "activitySyncService must not be null");
+        this.remoteSyncServiceProvider = remoteSyncServiceProvider;
+    }
 
     public GitHubRepositoryController(
             GitHubRepositoryService repositoryService,
             GitHubActivitySyncService activitySyncService) {
-        this.repositoryService = Objects.requireNonNull(repositoryService, "repositoryService must not be null");
-        this.activitySyncService = Objects.requireNonNull(activitySyncService, "activitySyncService must not be null");
+        this(repositoryService, activitySyncService, null);
     }
 
     /**
@@ -116,6 +132,27 @@ public class GitHubRepositoryController {
     }
 
     /**
+     * Triggers a live GitHub App REST API sync for a connected repository. Guarded by PM role.
+     */
+    @PostMapping("/repositories/{repositoryId}/sync")
+    public ResponseEntity<GitHubSyncSummaryResponse> syncRepository(
+            @AuthenticationPrincipal SessionService.Principal principal,
+            @PathVariable("workspaceId") UUID workspaceId,
+            @PathVariable("projectId") UUID projectId,
+            @PathVariable("repositoryId") UUID repositoryId) {
+
+        GitHubRemoteSyncService remoteSyncService = remoteSyncServiceProvider != null
+                ? remoteSyncServiceProvider.getIfAvailable()
+                : null;
+        if (remoteSyncService == null) {
+            throw new GitHubApiUnavailableException("GitHub remote sync service is unavailable");
+        }
+        GitHubSyncSummaryResponse summary = remoteSyncService.syncRepository(
+                principal, workspaceId, projectId, repositoryId);
+        return ResponseEntity.ok(summary);
+    }
+
+    /**
      * Lists git activities for a project ordered by happened_at DESC.
      * Guarded by project membership.
      */
@@ -135,6 +172,19 @@ public class GitHubRepositoryController {
                 kind
         );
         return ResponseEntity.ok(activities);
+    }
+
+    @ExceptionHandler(GitHubApiUnavailableException.class)
+    public ResponseEntity<ProblemDetail> handleGitHubApiUnavailable(GitHubApiUnavailableException ex) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.SERVICE_UNAVAILABLE, ex.getMessage());
+        problem.setTitle(GitHubApiUnavailableException.ERROR_CODE);
+        problem.setProperty("code", GitHubApiUnavailableException.ERROR_CODE);
+        ResponseEntity.BodyBuilder builder = ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .cacheControl(CacheControl.noStore());
+        if (ex.getRetryAfterSeconds() != null) {
+            builder.header(HttpHeaders.RETRY_AFTER, String.valueOf(ex.getRetryAfterSeconds()));
+        }
+        return builder.body(problem);
     }
 
     @ExceptionHandler(GitHubException.class)
