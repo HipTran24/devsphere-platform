@@ -7,6 +7,10 @@ import com.project.devsphere.monitoring.api.dto.AlertResponse;
 import com.project.devsphere.monitoring.api.dto.UpdateAlertStatusRequest;
 import com.project.devsphere.monitoring.domain.Alert;
 import com.project.devsphere.monitoring.infrastructure.persistence.AlertRepository;
+import com.project.devsphere.realtime.application.RealtimeEventPublisher;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -21,10 +25,23 @@ public class AlertService {
 
     private final AlertRepository alertRepository;
     private final AccessPolicy accessPolicy;
+    private final ObjectProvider<RealtimeEventPublisher> realtimeEventPublisher;
+    private final ObjectProvider<JdbcTemplate> jdbcTemplate;
 
     public AlertService(AlertRepository alertRepository, AccessPolicy accessPolicy) {
+        this(alertRepository, accessPolicy, null, null);
+    }
+
+    @Autowired
+    public AlertService(
+            AlertRepository alertRepository,
+            AccessPolicy accessPolicy,
+            ObjectProvider<RealtimeEventPublisher> realtimeEventPublisher,
+            ObjectProvider<JdbcTemplate> jdbcTemplate) {
         this.alertRepository = Objects.requireNonNull(alertRepository, "alertRepository must not be null");
         this.accessPolicy = Objects.requireNonNull(accessPolicy, "accessPolicy must not be null");
+        this.realtimeEventPublisher = realtimeEventPublisher;
+        this.jdbcTemplate = jdbcTemplate;
     }
 
     /**
@@ -84,7 +101,9 @@ public class AlertService {
                 existing.setSeverity(severity);
             }
             existing.setUpdatedAt(Instant.now());
-            return alertRepository.save(existing);
+            Alert saved = alertRepository.save(existing);
+            publishAlertEvent(resolveWorkspaceId(projectId), projectId, RealtimeEventPublisher.EVENT_ALERT_UPSERTED, saved);
+            return saved;
         }
 
         // Recurrence chaining: lookup last resolved alert with the same fingerprint
@@ -108,7 +127,9 @@ public class AlertService {
         newAlert.setCreatedAt(Instant.now());
         newAlert.setUpdatedAt(Instant.now());
 
-        return alertRepository.save(newAlert);
+        Alert saved = alertRepository.save(newAlert);
+        publishAlertEvent(resolveWorkspaceId(projectId), projectId, RealtimeEventPublisher.EVENT_ALERT_UPSERTED, saved);
+        return saved;
     }
 
     /**
@@ -178,7 +199,9 @@ public class AlertService {
 
         alert.setUpdatedAt(Instant.now());
         Alert saved = alertRepository.save(alert);
-        return AlertResponse.from(saved);
+        AlertResponse response = AlertResponse.from(saved);
+        publishAlertResponse(workspaceId, projectId, RealtimeEventPublisher.EVENT_ALERT_UPDATED, response);
+        return response;
     }
 
     /**
@@ -259,5 +282,33 @@ public class AlertService {
         }
 
         return history;
+    }
+
+    private UUID resolveWorkspaceId(UUID projectId) {
+        JdbcTemplate jdbc = jdbcTemplate == null ? null : jdbcTemplate.getIfAvailable();
+        if (jdbc == null || projectId == null) {
+            return null;
+        }
+        List<UUID> workspaceIds = jdbc.query(
+                "SELECT workspace_id FROM projects WHERE id = ?",
+                (rs, rowNum) -> rs.getObject("workspace_id", UUID.class),
+                projectId
+        );
+        return workspaceIds.isEmpty() ? null : workspaceIds.get(0);
+    }
+
+    private void publishAlertEvent(UUID workspaceId, UUID projectId, String eventType, Alert saved) {
+        if (saved == null) {
+            return;
+        }
+        publishAlertResponse(workspaceId, projectId, eventType, AlertResponse.from(saved));
+    }
+
+    private void publishAlertResponse(UUID workspaceId, UUID projectId, String eventType, AlertResponse response) {
+        RealtimeEventPublisher publisher = realtimeEventPublisher == null ? null : realtimeEventPublisher.getIfAvailable();
+        if (publisher == null || workspaceId == null || projectId == null || response == null) {
+            return;
+        }
+        publisher.publishAlert(workspaceId, projectId, eventType, response);
     }
 }

@@ -1,12 +1,16 @@
 package com.project.devsphere.identity.application;
 
 import com.project.devsphere.identity.domain.SessionTokens;
+import com.project.devsphere.realtime.application.RealtimeSessionRegistry;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.argon2.Argon2PasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Duration;
@@ -27,6 +31,7 @@ public class SessionService {
     private final TransactionTemplate transactionTemplate;
     private final PasswordEncoder passwordEncoder;
     private final SessionTokens tokens;
+    private final ObjectProvider<RealtimeSessionRegistry> realtimeSessionRegistry;
     private final String dummyPasswordHash;
 
     public SessionService(
@@ -34,10 +39,21 @@ public class SessionService {
             TransactionTemplate transactionTemplate,
             ObjectProvider<PasswordEncoder> passwordEncoder,
             SessionTokens tokens) {
+        this(jdbcTemplate, transactionTemplate, passwordEncoder, tokens, null);
+    }
+
+    @Autowired
+    public SessionService(
+            JdbcTemplate jdbcTemplate,
+            TransactionTemplate transactionTemplate,
+            ObjectProvider<PasswordEncoder> passwordEncoder,
+            SessionTokens tokens,
+            ObjectProvider<RealtimeSessionRegistry> realtimeSessionRegistry) {
         this.jdbcTemplate = jdbcTemplate;
         this.transactionTemplate = transactionTemplate;
         this.passwordEncoder = passwordEncoder.getIfAvailable(() -> new Argon2PasswordEncoder(16, 32, 1, 19456, 2));
         this.tokens = tokens;
+        this.realtimeSessionRegistry = realtimeSessionRegistry;
         this.dummyPasswordHash = this.passwordEncoder.encode(UUID.randomUUID().toString());
     }
 
@@ -246,13 +262,16 @@ public class SessionService {
 
             if (session.revokedAt() != null) {
                 if (session.rotatedAt() != null && now.isBefore(session.expiresAt())) {
-                    jdbcTemplate.update(
+                    List<UUID> revokedIds = jdbcTemplate.query(
                             "UPDATE auth_sessions SET revoked_at = ? " +
-                                    "WHERE user_id = ? AND session_family_id = ? AND revoked_at IS NULL",
+                                    "WHERE user_id = ? AND session_family_id = ? AND revoked_at IS NULL " +
+                                    "RETURNING id",
+                            (rs, rowNum) -> rs.getObject("id", UUID.class),
                             nowOdt,
                             ownerUserId,
                             session.familyId()
                     );
+                    scheduleDisconnectAuthSessions(revokedIds);
                     return new Attempt(Outcome.SESSION_REPLAYED, null, null, null);
                 }
                 return new Attempt(Outcome.INVALID_SESSION, null, null, null);
@@ -264,6 +283,7 @@ public class SessionService {
                     nowOdt,
                     session.id()
             );
+            scheduleDisconnectAuthSessions(List.of(session.id()));
 
             UUID successorSessionId = UUID.randomUUID();
             String successorRawRefresh = tokens.generateRefresh();
@@ -364,13 +384,16 @@ public class SessionService {
             Instant now = databaseNow();
             OffsetDateTime nowOdt = now.atOffset(ZoneOffset.UTC);
             if (session.expiresAt() != null && now.isBefore(session.expiresAt())) {
-                jdbcTemplate.update(
+                List<UUID> revokedIds = jdbcTemplate.query(
                         "UPDATE auth_sessions SET revoked_at = ? " +
-                                "WHERE user_id = ? AND session_family_id = ? AND revoked_at IS NULL",
+                                "WHERE user_id = ? AND session_family_id = ? AND revoked_at IS NULL " +
+                                "RETURNING id",
+                        (rs, rowNum) -> rs.getObject("id", UUID.class),
                         nowOdt,
                         ownerUserId,
                         session.familyId()
                 );
+                scheduleDisconnectAuthSessions(revokedIds);
             }
         });
     }
@@ -500,9 +523,11 @@ public class SessionService {
                         AND cur.revoked_at IS NULL
                         AND cur.expires_at > ?
                   )
+                RETURNING id
                 """;
-            int updated = jdbcTemplate.update(
+            List<UUID> revokedIds = jdbcTemplate.query(
                 updateSql,
+                (rs, rowNum) -> rs.getObject("id", UUID.class),
                 now,
                 principal.userId(),
                 familyId,
@@ -511,8 +536,38 @@ public class SessionService {
                 principal.userId(),
                 now
             );
-            return updated > 0;
+            if (!revokedIds.isEmpty()) {
+                scheduleDisconnectAuthSessions(revokedIds);
+                return true;
+            }
+            return false;
         });
         return Boolean.TRUE.equals(result);
+    }
+
+    private void scheduleDisconnectAuthSessions(List<UUID> revokedSessionIds) {
+        if (revokedSessionIds == null || revokedSessionIds.isEmpty()) {
+            return;
+        }
+        RealtimeSessionRegistry registry = realtimeSessionRegistry == null ? null : realtimeSessionRegistry.getIfAvailable();
+        if (registry == null) {
+            return;
+        }
+        List<UUID> idsToDisconnect = List.copyOf(revokedSessionIds);
+        Runnable disconnectTask = () -> {
+            for (UUID authSessionId : idsToDisconnect) {
+                registry.disconnectAuthSession(authSessionId);
+            }
+        };
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    disconnectTask.run();
+                }
+            });
+        } else {
+            disconnectTask.run();
+        }
     }
 }

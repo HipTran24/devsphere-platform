@@ -52,4 +52,8 @@ public class GitHubException extends RuntimeException {
     public static GitHubException validationFailed(String message) {
         return new GitHubException(HttpStatus.BAD_REQUEST, "VALIDATION_FAILED", message);
     }
+
+    public static GitHubException apiUnavailable(String message) {
+        return new GitHubException(HttpStatus.SERVICE_UNAVAILABLE, "GITHUB_API_UNAVAILABLE", message);
+    }
 }

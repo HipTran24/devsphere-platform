@@ -8,9 +8,15 @@ import com.project.devsphere.operations.api.dto.DispatchResultResponse;
 import com.project.devsphere.operations.api.dto.JobQueueStatsResponse;
 import com.project.devsphere.operations.api.dto.OperationsHealthResponse;
 import com.project.devsphere.operations.api.dto.QuartzTriggerResponse;
+import com.project.devsphere.operations.application.DemoSeedDataService;
+import com.project.devsphere.operations.application.DemoSeedResultResponse;
 import com.project.devsphere.operations.application.OperationsAdminService;
 import com.project.devsphere.operations.application.OperationsException;
 import com.project.devsphere.operations.domain.BackgroundJob;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.env.Environment;
 import org.springframework.http.CacheControl;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
@@ -28,6 +34,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
 
@@ -43,10 +50,26 @@ public class OperationsAdminController {
 
     private final OperationsAdminService operationsAdminService;
     private final AccessPolicy accessPolicy;
+    private final DemoSeedDataService demoSeedDataService;
+    private final boolean demoSeedEnabled;
+    private final Environment environment;
 
     public OperationsAdminController(OperationsAdminService operationsAdminService, AccessPolicy accessPolicy) {
+        this(operationsAdminService, accessPolicy, null, false, null);
+    }
+
+    @Autowired
+    public OperationsAdminController(
+            OperationsAdminService operationsAdminService,
+            AccessPolicy accessPolicy,
+            ObjectProvider<DemoSeedDataService> demoSeedDataServiceProvider,
+            @Value("${devsphere.seed.demo.enabled:false}") boolean demoSeedEnabled,
+            Environment environment) {
         this.operationsAdminService = operationsAdminService;
         this.accessPolicy = accessPolicy;
+        this.demoSeedDataService = demoSeedDataServiceProvider != null ? demoSeedDataServiceProvider.getIfAvailable() : null;
+        this.demoSeedEnabled = demoSeedEnabled;
+        this.environment = environment;
     }
 
     @GetMapping("/health")
@@ -103,6 +126,24 @@ public class OperationsAdminController {
             @PathVariable String jobName) {
         accessPolicy.requireSystemAdmin(principal);
         return noStore(HttpStatus.ACCEPTED, operationsAdminService.triggerJob(jobName, principal));
+    }
+
+    @PostMapping("/seed-demo")
+    public ResponseEntity<DemoSeedResultResponse> seedDemo(@AuthenticationPrincipal SessionService.Principal principal) {
+        accessPolicy.requireSystemAdmin(principal);
+        if (!demoSeedEnabled || isProdProfileActive() || demoSeedDataService == null) {
+            throw new OperationsException(
+                    HttpStatus.FORBIDDEN,
+                    "DEMO_SEED_DISABLED",
+                    "Demo data seeding is disabled in this environment"
+            );
+        }
+        return noStore(HttpStatus.OK, demoSeedDataService.seedDemoData());
+    }
+
+    private boolean isProdProfileActive() {
+        return environment != null
+                && Arrays.stream(environment.getActiveProfiles()).anyMatch(profile -> "prod".equalsIgnoreCase(profile));
     }
 
     @ExceptionHandler(OperationsException.class)

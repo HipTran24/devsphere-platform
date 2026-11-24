@@ -4,14 +4,24 @@ import com.project.devsphere.storage.application.StorageException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.springframework.mock.env.MockEnvironment;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 import java.net.URI;
 import java.net.URLDecoder;
+import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.Arrays;
+import java.util.HexFormat;
 import java.util.Map;
+import java.util.TreeMap;
 import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -125,6 +135,105 @@ class AwsS3StorageProviderTest {
         S3StorageProperties badRegion = properties(null, false);
         badRegion.setRegion("mars-1");
         assertThatThrownBy(() -> new AwsS3StorageProvider(badRegion, CREDENTIALS)).isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
+    void headUrlUsesAuthenticSigV4HeadSignatureDistinctFromGet() throws Exception {
+        Clock fixedClock = Clock.fixed(Instant.parse("2026-11-24T12:00:00Z"), ZoneOffset.UTC);
+        AwsS3StorageProvider provider = new AwsS3StorageProvider(properties(null, false), CREDENTIALS, null, fixedClock);
+        try {
+            String key = "workspaces/w/projects/p/attachments/a/spec file.pdf";
+            URI headUrl = URI.create(provider.generatePresignedHeadUrl(key, 60));
+            URI getUrl = URI.create(provider.generatePresignedDownloadUrl(key, 60));
+
+            Map<String, String> headQuery = query(headUrl);
+            Map<String, String> getQuery = query(getUrl);
+
+            assertThat(headUrl.getScheme()).isEqualTo("https");
+            assertThat(headUrl.getHost()).isEqualTo("devsphere-attachments.s3.ap-southeast-1.amazonaws.com");
+            assertThat(headUrl.getRawPath()).isEqualTo("/workspaces/w/projects/p/attachments/a/spec%20file.pdf");
+            assertThat(headQuery).containsEntry("X-Amz-Algorithm", "AWS4-HMAC-SHA256")
+                    .containsEntry("X-Amz-Expires", "60")
+                    .containsEntry("X-Amz-SignedHeaders", "host")
+                    .containsEntry("X-Amz-Date", "20261124T120000Z")
+                    .containsEntry("X-Amz-Credential", "AKIAIOSFODNN7EXAMPLE/20261124/ap-southeast-1/s3/aws4_request");
+            assertThat(headQuery.get("X-Amz-Signature")).matches("^[0-9a-f]{64}$");
+            assertThat(headQuery.get("X-Amz-Signature")).isNotEqualTo(getQuery.get("X-Amz-Signature"));
+
+            String expectedSig = computeSigV4QuerySignature(
+                    "HEAD",
+                    headUrl,
+                    headUrl.getHost(),
+                    "20261124T120000Z",
+                    "ap-southeast-1",
+                    "AKIAIOSFODNN7EXAMPLE",
+                    "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+            );
+            assertThat(headQuery.get("X-Amz-Signature")).isEqualTo(expectedSig);
+        } finally {
+            provider.close();
+        }
+    }
+
+    @Test
+    void prodProfileRejectsAllowInsecureEndpointEvenWhenConfiguredTrue() {
+        MockEnvironment prodEnv = new MockEnvironment();
+        prodEnv.setActiveProfiles("prod");
+        S3StorageProperties props = properties("http://127.0.0.1:9000", true);
+        assertThatThrownBy(() -> new AwsS3StorageProvider(props, CREDENTIALS, prodEnv))
+                .isInstanceOf(IllegalStateException.class);
+    }
+
+    private static String computeSigV4QuerySignature(
+            String method,
+            URI signedUri,
+            String hostHeader,
+            String amzDate,
+            String region,
+            String accessKey,
+            String secretKey) throws Exception {
+        Map<String, String> params = new TreeMap<>();
+        for (String pair : signedUri.getRawQuery().split("&")) {
+            String[] kv = pair.split("=", 2);
+            if (!"X-Amz-Signature".equals(kv[0])) {
+                params.put(kv[0], URLDecoder.decode(kv[1], StandardCharsets.UTF_8));
+            }
+        }
+        String canonicalQuery = params.entrySet().stream()
+                .map(e -> rfc3986(e.getKey()) + "=" + rfc3986(e.getValue()))
+                .collect(Collectors.joining("&"));
+        String canonicalRequest = method + "\n"
+                + signedUri.getRawPath() + "\n"
+                + canonicalQuery + "\n"
+                + "host:" + hostHeader + "\n"
+                + "\n"
+                + "host\n"
+                + "UNSIGNED-PAYLOAD";
+        String dateStamp = amzDate.substring(0, 8);
+        String scope = dateStamp + "/" + region + "/s3/aws4_request";
+        String stringToSign = "AWS4-HMAC-SHA256\n"
+                + amzDate + "\n"
+                + scope + "\n"
+                + HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(canonicalRequest.getBytes(StandardCharsets.UTF_8)));
+
+        byte[] kDate = hmacSha256(("AWS4" + secretKey).getBytes(StandardCharsets.UTF_8), dateStamp);
+        byte[] kRegion = hmacSha256(kDate, region);
+        byte[] kService = hmacSha256(kRegion, "s3");
+        byte[] kSigning = hmacSha256(kService, "aws4_request");
+        return HexFormat.of().formatHex(hmacSha256(kSigning, stringToSign));
+    }
+
+    private static byte[] hmacSha256(byte[] key, String data) throws Exception {
+        Mac mac = Mac.getInstance("HmacSHA256");
+        mac.init(new SecretKeySpec(key, "HmacSHA256"));
+        return mac.doFinal(data.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private static String rfc3986(String s) {
+        return URLEncoder.encode(s, StandardCharsets.UTF_8)
+                .replace("+", "%20")
+                .replace("*", "%2A")
+                .replace("%7E", "~");
     }
 
     private static Map<String, String> query(URI uri) {

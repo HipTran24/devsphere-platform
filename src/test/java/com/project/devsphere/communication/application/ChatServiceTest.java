@@ -1,5 +1,6 @@
 package com.project.devsphere.communication.application;
 
+import com.project.devsphere.ai.application.AiExecutionService;
 import com.project.devsphere.communication.domain.ChatChannel;
 import com.project.devsphere.communication.domain.ChatChannelMember;
 import com.project.devsphere.communication.domain.ChatMessage;
@@ -15,14 +16,19 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.transaction.TransactionStatus;
+import org.springframework.transaction.support.TransactionCallback;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.List;
 import java.util.Optional;
@@ -269,5 +275,74 @@ class ChatServiceTest {
         Page<ChatMessage> result = chatService.listMessages(principal, workspaceId, projectId, channelId, PageRequest.of(0, 50));
         assertThat(result.getContent()).hasSize(1);
         assertThat(result.getContent().get(0).getBody()).isEqualTo("Test message");
+    }
+
+    @Test
+    @DisplayName("WARNING-5: sendMessage commits user message via TransactionTemplate before invoking @ProjectAI")
+    @SuppressWarnings("unchecked")
+    void sendMessageReleasesTransactionBeforeProjectAiExecution() {
+        UUID channelId = UUID.randomUUID();
+        ChatChannel channel = new ChatChannel();
+        channel.setId(channelId);
+        channel.setName("general");
+        when(chatChannelRepository.findByIdAndWorkspaceIdAndProjectId(channelId, workspaceId, projectId))
+                .thenReturn(Optional.of(channel));
+        when(chatChannelMemberRepository.existsByChannelIdAndUserId(channelId, callerUserId)).thenReturn(true);
+
+        ChatMessage savedMsg = new ChatMessage();
+        savedMsg.setId(UUID.randomUUID());
+        savedMsg.setBody("@ProjectAI summarize status");
+        when(chatMessageRepository.save(any(ChatMessage.class))).thenReturn(savedMsg);
+
+        java.util.concurrent.atomic.AtomicBoolean txActive = new java.util.concurrent.atomic.AtomicBoolean(false);
+        TransactionTemplate txTemplate = mock(TransactionTemplate.class);
+        when(txTemplate.execute(any())).thenAnswer(invocation -> {
+            txActive.set(true);
+            try {
+                TransactionCallback<ChatMessage> callback = invocation.getArgument(0);
+                return callback.doInTransaction(mock(TransactionStatus.class));
+            } finally {
+                txActive.set(false);
+            }
+        });
+        AiExecutionService aiExecutionService = mock(AiExecutionService.class);
+        doAnswer(invocation -> {
+            assertThat(txActive.get()).isFalse();
+            return null;
+        }).when(aiExecutionService).executeProjectAiChat(any(), any(), any(), any(), any(), any(), any());
+
+        ObjectProvider<AiExecutionService> aiProvider = mock(ObjectProvider.class);
+        when(aiProvider.getIfAvailable()).thenReturn(aiExecutionService);
+        ObjectProvider<TransactionTemplate> txProvider = mock(ObjectProvider.class);
+        when(txProvider.getIfAvailable()).thenReturn(txTemplate);
+
+        ChatService serviceWithTx = new ChatService(
+                chatChannelRepository,
+                chatChannelMemberRepository,
+                chatMessageRepository,
+                accessPolicy,
+                notificationService,
+                jdbcTemplate,
+                null,
+                aiProvider,
+                txProvider
+        );
+
+        ChatMessage result = serviceWithTx.sendMessage(
+                principal, workspaceId, projectId, channelId, "@ProjectAI summarize status", null, null);
+        assertThat(result.getId()).isEqualTo(savedMsg.getId());
+
+        InOrder order = inOrder(txTemplate, chatMessageRepository, aiExecutionService);
+        order.verify(txTemplate).execute(any());
+        order.verify(chatMessageRepository).save(any(ChatMessage.class));
+        order.verify(aiExecutionService).executeProjectAiChat(
+                eq(principal),
+                eq(workspaceId),
+                eq(projectId),
+                eq(channelId),
+                eq(savedMsg.getId()),
+                eq("@ProjectAI summarize status"),
+                any()
+        );
     }
 }

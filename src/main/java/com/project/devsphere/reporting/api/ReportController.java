@@ -2,9 +2,11 @@ package com.project.devsphere.reporting.api;
 
 import com.project.devsphere.identity.application.SessionService;
 import com.project.devsphere.reporting.api.dto.CreateReportRequest;
+import com.project.devsphere.reporting.api.dto.ReportExportAttachmentResponse;
 import com.project.devsphere.reporting.api.dto.ReportResponse;
 import com.project.devsphere.reporting.application.ReportException;
 import com.project.devsphere.reporting.application.ReportService;
+import com.project.devsphere.storage.application.StorageException;
 import jakarta.validation.Valid;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.*;
@@ -113,6 +115,32 @@ public class ReportController {
                 .build());
 
         return new ResponseEntity<>(fileBytes, headers, HttpStatus.OK);
+    }
+
+    @PostMapping(path = "/{reportId}/export-attachment", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<ReportExportAttachmentResponse> exportReportAsAttachment(
+            @AuthenticationPrincipal SessionService.Principal principal,
+            @PathVariable UUID workspaceId,
+            @PathVariable UUID projectId,
+            @PathVariable UUID reportId,
+            @RequestParam(defaultValue = "PDF") String format) {
+
+        ReportExportAttachmentResponse response = reportService.exportReportAsAttachment(
+                principal, workspaceId, projectId, reportId, format
+        );
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .cacheControl(CacheControl.noStore())
+                .body(response);
+    }
+
+    @ExceptionHandler(StorageException.class)
+    public ResponseEntity<ProblemDetail> handleStorageException(StorageException ex) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(ex.getStatus(), ex.getMessage());
+        problem.setTitle(ex.getCode());
+        problem.setProperty("code", ex.getCode());
+        return ResponseEntity.status(ex.getStatus())
+                .cacheControl(CacheControl.noStore())
+                .body(problem);
     }
 
     @ExceptionHandler(ReportException.class)

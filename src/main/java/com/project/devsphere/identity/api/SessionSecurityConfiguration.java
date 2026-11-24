@@ -64,6 +64,9 @@ public class SessionSecurityConfiguration {
             ROUTES.matcher(HttpMethod.GET, "/actuator/health/liveness"),
             ROUTES.matcher(HttpMethod.GET, "/actuator/health/readiness"));
     private static final RequestMatcher ACTUATOR_ENDPOINTS = ROUTES.matcher("/actuator/**");
+    private static final RequestMatcher WS_ENDPOINTS = new OrRequestMatcher(
+            ROUTES.matcher("/ws"),
+            ROUTES.matcher("/ws/**"));
     private static final RequestMatcher BEARER_ENDPOINTS =
             new OrRequestMatcher(CURRENT_USER, LIST_SESSIONS, REVOKE_SESSION, ADMIN_ENDPOINTS, WORKSPACE_ENDPOINTS, CLIENT_PORTAL_ENDPOINTS,
                     ACTUATOR_ENDPOINTS);
@@ -105,7 +108,8 @@ public class SessionSecurityConfiguration {
                     ROUTES.matcher(HttpMethod.POST, "/api/v1/auth/forgot-password"),
                     ROUTES.matcher(HttpMethod.POST, "/api/v1/auth/forgot-password/verify"),
                     ROUTES.matcher(HttpMethod.POST, "/api/v1/auth/reset-password"),
-                    ROUTES.matcher(HttpMethod.POST, "/api/v1/github/webhook")
+                    ROUTES.matcher(HttpMethod.POST, "/api/v1/github/webhook"),
+                    WS_ENDPOINTS
                 )
             )
             .sessionManagement(session -> session
@@ -133,6 +137,7 @@ public class SessionSecurityConfiguration {
                 .requestMatchers(HttpMethod.POST, "/api/v1/auth/refresh").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/v1/auth/logout").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/v1/auth/csrf").permitAll()
+                .requestMatchers(WS_ENDPOINTS).permitAll()
                 .requestMatchers(ACTUATOR_PUBLIC_HEALTH).permitAll()
                 .requestMatchers(ACTUATOR_ENDPOINTS).hasRole("ADMIN")
                 .requestMatchers(OPERATIONS_ADMIN_ENDPOINTS).hasRole("ADMIN")

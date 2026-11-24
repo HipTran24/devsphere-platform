@@ -24,6 +24,10 @@ public class S3StorageProperties {
     private boolean pathStyleAccess;
     /** Test-only escape hatch allowing http and loopback endpoints; metadata addresses stay blocked. */
     private boolean allowInsecureEndpoint;
+    /** Whether confirmUpload verifies object presence via HTTP HEAD in aws mode. */
+    private boolean verifyOnConfirm = false;
+    /** HTTP connect/request timeout in milliseconds for presigned HEAD/PUT calls. */
+    private long httpTimeoutMs = 10000L;
 
     public String getMode() {
         return mode;
@@ -81,10 +85,27 @@ public class S3StorageProperties {
         this.allowInsecureEndpoint = allowInsecureEndpoint;
     }
 
+    public boolean isVerifyOnConfirm() {
+        return verifyOnConfirm;
+    }
+
+    public void setVerifyOnConfirm(boolean verifyOnConfirm) {
+        this.verifyOnConfirm = verifyOnConfirm;
+    }
+
+    public long getHttpTimeoutMs() {
+        return httpTimeoutMs;
+    }
+
+    public void setHttpTimeoutMs(long httpTimeoutMs) {
+        this.httpTimeoutMs = httpTimeoutMs;
+    }
+
     @Override
     public String toString() {
         // Never render the signing secret.
         return "S3StorageProperties[mode=" + mode + ", bucket=" + bucket + ", region=" + region
-                + ", endpoint=" + endpoint + ", pathStyleAccess=" + pathStyleAccess + "]";
+                + ", endpoint=" + endpoint + ", pathStyleAccess=" + pathStyleAccess
+                + ", verifyOnConfirm=" + verifyOnConfirm + ", httpTimeoutMs=" + httpTimeoutMs + "]";
     }
 }

@@ -53,8 +53,8 @@ jobs:
           SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/devsphere
           SPRING_DATASOURCE_USERNAME: devsphere
           SPRING_DATASOURCE_PASSWORD: devsphere_ci_password
-          AUTH_SESSION_SIGNING_KEY: dGVzdF9zaWduaW5nX2tleV9mb3JfZGV2c3BoZXJlX2NpX2tleV8xMjM0NTY3ODk=
         run: |
+          export AUTH_SESSION_SIGNING_KEY="$(openssl rand -base64 32 | tr -d '\n')"
           ./mvnw -B verify
 
   frontend-check:
