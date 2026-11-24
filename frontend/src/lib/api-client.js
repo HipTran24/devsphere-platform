@@ -315,3 +315,65 @@ export async function fetchCurrentUser() {
   return apiFetch('/api/v1/auth/me', { method: 'GET' });
 }
 
+// -----------------------------------------------------------------------------
+// Workspace Endpoints
+// -----------------------------------------------------------------------------
+
+export async function fetchWorkspaces({ page = 0, size = 50 } = {}) {
+  return apiFetch(`/api/v1/workspaces?page=${page}&size=${size}`);
+}
+
+export async function getWorkspace(workspaceId) {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}`);
+}
+
+export async function createWorkspace({ name, slug, description }) {
+  return apiFetch('/api/v1/workspaces', {
+    method: 'POST',
+    body: { name, slug, description: description || undefined },
+  });
+}
+
+export async function updateWorkspace(workspaceId, { name, description }) {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}`, {
+    method: 'PATCH',
+    body: { name, description },
+  });
+}
+
+export async function getWorkspaceSetup(workspaceId) {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/setup`).catch(() => getWorkspace(workspaceId));
+}
+
+// -----------------------------------------------------------------------------
+// Project Endpoints
+// -----------------------------------------------------------------------------
+
+export async function fetchProjects(workspaceId) {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/projects`);
+}
+
+export async function getProject(workspaceId, projectId) {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/projects/${projectId}`);
+}
+
+export async function createProject(workspaceId, projectData) {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/projects`, {
+    method: 'POST',
+    body: projectData,
+  });
+}
+
+export async function updateProject(workspaceId, projectId, updateData) {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/projects/${projectId}`, {
+    method: 'PATCH',
+    body: updateData,
+  });
+}
+
+export async function activateProject(workspaceId, projectId) {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/projects/${projectId}/activate`, {
+    method: 'POST',
+  });
+}
+
