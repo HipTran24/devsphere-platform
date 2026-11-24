@@ -1,5 +1,6 @@
 package com.project.devsphere.communication.application;
 
+import com.project.devsphere.communication.api.dto.ChatMessageResponse;
 import com.project.devsphere.communication.domain.ChatChannel;
 import com.project.devsphere.communication.domain.ChatChannelMember;
 import com.project.devsphere.communication.domain.ChatMessage;
@@ -12,6 +13,9 @@ import com.project.devsphere.identity.application.SessionService;
 import com.project.devsphere.identity.domain.ProjectRole;
 import com.project.devsphere.notification.application.NotificationService;
 import com.project.devsphere.notification.domain.Notification;
+import com.project.devsphere.realtime.application.RealtimeEventPublisher;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -33,6 +37,7 @@ public class ChatService {
     private final AccessPolicy accessPolicy;
     private final NotificationService notificationService;
     private final JdbcTemplate jdbcTemplate;
+    private final ObjectProvider<RealtimeEventPublisher> realtimeEventPublisher;
 
     public ChatService(
             ChatChannelRepository chatChannelRepository,
@@ -41,12 +46,26 @@ public class ChatService {
             AccessPolicy accessPolicy,
             NotificationService notificationService,
             JdbcTemplate jdbcTemplate) {
+        this(chatChannelRepository, chatChannelMemberRepository, chatMessageRepository,
+                accessPolicy, notificationService, jdbcTemplate, null);
+    }
+
+    @Autowired
+    public ChatService(
+            ChatChannelRepository chatChannelRepository,
+            ChatChannelMemberRepository chatChannelMemberRepository,
+            ChatMessageRepository chatMessageRepository,
+            AccessPolicy accessPolicy,
+            NotificationService notificationService,
+            JdbcTemplate jdbcTemplate,
+            ObjectProvider<RealtimeEventPublisher> realtimeEventPublisher) {
         this.chatChannelRepository = Objects.requireNonNull(chatChannelRepository, "chatChannelRepository must not be null");
         this.chatChannelMemberRepository = Objects.requireNonNull(chatChannelMemberRepository, "chatChannelMemberRepository must not be null");
         this.chatMessageRepository = Objects.requireNonNull(chatMessageRepository, "chatMessageRepository must not be null");
         this.accessPolicy = Objects.requireNonNull(accessPolicy, "accessPolicy must not be null");
         this.notificationService = Objects.requireNonNull(notificationService, "notificationService must not be null");
         this.jdbcTemplate = Objects.requireNonNull(jdbcTemplate, "jdbcTemplate must not be null");
+        this.realtimeEventPublisher = realtimeEventPublisher;
     }
 
     public ChatChannel createChannel(
@@ -289,6 +308,12 @@ public class ChatService {
                     );
                 }
             }
+        }
+
+        // Publish real-time chat message event after transaction commit
+        RealtimeEventPublisher publisher = realtimeEventPublisher == null ? null : realtimeEventPublisher.getIfAvailable();
+        if (publisher != null && saved != null && workspaceId != null && projectId != null && channelId != null) {
+            publisher.publishChatMessage(workspaceId, projectId, channelId, ChatMessageResponse.from(saved));
         }
 
         return saved;

@@ -2,10 +2,15 @@ package com.project.devsphere.workspace.application;
 
 import com.project.devsphere.identity.application.AccessPolicy;
 import com.project.devsphere.identity.application.SessionService;
+import com.project.devsphere.realtime.application.RealtimeSessionRegistry;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -26,11 +31,21 @@ public class WorkspaceMembershipService {
 
     private final JdbcTemplate jdbcTemplate;
     private final AccessPolicy accessPolicy;
+    private final ObjectProvider<RealtimeSessionRegistry> realtimeSessionRegistry;
     private final SecureRandom secureRandom = new SecureRandom();
 
     public WorkspaceMembershipService(JdbcTemplate jdbcTemplate, AccessPolicy accessPolicy) {
+        this(jdbcTemplate, accessPolicy, null);
+    }
+
+    @Autowired
+    public WorkspaceMembershipService(
+            JdbcTemplate jdbcTemplate,
+            AccessPolicy accessPolicy,
+            ObjectProvider<RealtimeSessionRegistry> realtimeSessionRegistry) {
         this.jdbcTemplate = Objects.requireNonNull(jdbcTemplate, "jdbcTemplate must not be null");
         this.accessPolicy = Objects.requireNonNull(accessPolicy, "accessPolicy must not be null");
+        this.realtimeSessionRegistry = realtimeSessionRegistry;
     }
 
     /**
@@ -344,6 +359,8 @@ public class WorkspaceMembershipService {
             }
             throw e;
         }
+
+        scheduleRealtimeDisconnect(workspaceId, targetUserId);
     }
 
     /**
@@ -422,6 +439,23 @@ public class WorkspaceMembershipService {
                 jdbcTemplate.queryForObject("SELECT set_config('devsphere.actor_id', ?, true)", String.class, principal.userId().toString());
             } catch (Exception ignored) {
             }
+        }
+    }
+
+    private void scheduleRealtimeDisconnect(UUID workspaceId, UUID targetUserId) {
+        RealtimeSessionRegistry registry = realtimeSessionRegistry == null ? null : realtimeSessionRegistry.getIfAvailable();
+        if (registry == null) {
+            return;
+        }
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    registry.disconnectUserFromWorkspace(workspaceId, targetUserId);
+                }
+            });
+        } else {
+            registry.disconnectUserFromWorkspace(workspaceId, targetUserId);
         }
     }
 

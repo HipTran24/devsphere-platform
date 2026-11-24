@@ -7,6 +7,7 @@ import com.project.devsphere.notification.domain.Notification;
 import com.project.devsphere.notification.infrastructure.persistence.NotificationRepository;
 import com.project.devsphere.operations.application.OutboxService;
 import com.project.devsphere.operations.domain.BackgroundJob;
+import com.project.devsphere.realtime.application.RealtimeEventPublisher;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -29,25 +30,35 @@ public class NotificationService {
     private final NotificationRepository notificationRepository;
     private final AccessPolicy accessPolicy;
     private final ObjectProvider<OutboxService> outboxService;
+    private final ObjectProvider<RealtimeEventPublisher> realtimeEventPublisher;
 
     public NotificationService(
             NotificationRepository notificationRepository,
             AccessPolicy accessPolicy) {
-        this(notificationRepository, accessPolicy, null);
+        this(notificationRepository, accessPolicy, null, null);
     }
 
     /**
      * @param outboxService optional outbox used to queue e-mail delivery for notifications created
      *                      with {@link Notification.EmailStatus#PENDING}; may be {@code null}.
      */
-    @Autowired
     public NotificationService(
             NotificationRepository notificationRepository,
             AccessPolicy accessPolicy,
             ObjectProvider<OutboxService> outboxService) {
+        this(notificationRepository, accessPolicy, outboxService, null);
+    }
+
+    @Autowired
+    public NotificationService(
+            NotificationRepository notificationRepository,
+            AccessPolicy accessPolicy,
+            ObjectProvider<OutboxService> outboxService,
+            ObjectProvider<RealtimeEventPublisher> realtimeEventPublisher) {
         this.notificationRepository = Objects.requireNonNull(notificationRepository, "notificationRepository must not be null");
         this.accessPolicy = Objects.requireNonNull(accessPolicy, "accessPolicy must not be null");
         this.outboxService = outboxService;
+        this.realtimeEventPublisher = realtimeEventPublisher;
     }
 
     public Notification createNotification(
@@ -109,8 +120,11 @@ public class NotificationService {
 
         try {
             Notification saved = notificationRepository.save(notification);
-            if (saved != null && saved.getEmailStatus() == Notification.EmailStatus.PENDING) {
-                enqueueEmail(saved);
+            if (saved != null) {
+                if (saved.getEmailStatus() == Notification.EmailStatus.PENDING) {
+                    enqueueEmail(saved);
+                }
+                publishRealtimeNotification(saved);
             }
             return saved;
         } catch (DataIntegrityViolationException ex) {
@@ -136,6 +150,18 @@ public class NotificationService {
                 OutboxService.idempotencyKey("notification-email", saved.getId().toString()),
                 Map.of("notificationId", saved.getId().toString(), "eventType", saved.getEventType()),
                 null));
+    }
+
+    private void publishRealtimeNotification(Notification saved) {
+        RealtimeEventPublisher publisher = realtimeEventPublisher == null ? null : realtimeEventPublisher.getIfAvailable();
+        if (publisher == null || saved.getUserId() == null) {
+            return;
+        }
+        publisher.publishNotification(
+                saved.getUserId(),
+                saved.getWorkspaceId(),
+                saved.getProjectId(),
+                NotificationResponse.from(saved));
     }
 
     @Transactional(readOnly = true)
