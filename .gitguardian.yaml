@@ -1,0 +1,9 @@
+version: 2
+
+secret:
+  ignored_paths:
+    - "src/test/**"
+    - "frontend/tests/**"
+    - "frontend/e2e/**"
+    - "tests/**"
+    - "docs/**"

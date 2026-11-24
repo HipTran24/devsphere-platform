@@ -245,8 +245,21 @@ class InfraConfigTests(unittest.TestCase):
         self.assertIn("timeout-minutes:", ci_content)
         self.assertIn("java-version: '27'", ci_content)
         self.assertIn("./mvnw -B verify", ci_content)
+        self.assertIn("openssl rand -base64 32", ci_content)
+        self.assertNotIn("dGVzdF9zaWduaW5n", ci_content)
         self.assertIn("npm run test:e2e", ci_content)
         self.assertIn("tests/infra", ci_content)
+
+    def test_gitguardian_config_excludes_test_fixtures(self):
+        """GitGuardian configuration must exist with v2 schema ignoring test and doc fixtures."""
+        gg_path = REPO_ROOT / ".gitguardian.yaml"
+        self.assertTrue(gg_path.exists(), ".gitguardian.yaml not found")
+        gg_content = gg_path.read_text(encoding="utf-8")
+
+        self.assertIn("version: 2", gg_content)
+        self.assertIn("secret:", gg_content)
+        self.assertIn("ignored_paths:", gg_content)
+        self.assertIn('"src/test/**"', gg_content)
 
 
 if __name__ == "__main__":
