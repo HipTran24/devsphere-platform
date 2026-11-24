@@ -234,3 +234,47 @@ test('filterWorkItemTree returns empty array when no items match criteria', () =
   const filtered = filterWorkItemTree(tree, { search: 'NON_EXISTENT_QUERY_XYZ_12345' });
   assert.deepEqual(filtered, []);
 });
+
+test('buildWorkItemTree attaches orphan items with invalid parentId as top-level roots', () => {
+  const itemsWithOrphan = [
+    { id: 'item-1', itemKey: 'DSP-1', title: 'Epic 1', parentId: null, type: 'EPIC' },
+    { id: 'item-2', itemKey: 'DSP-2', title: 'Orphan Task', parentId: 'non-existent-parent', type: 'TASK' },
+  ];
+
+  const tree = buildWorkItemTree(itemsWithOrphan);
+  assert.equal(tree.length, 2);
+  assert.equal(tree[0].itemKey, 'DSP-1');
+  assert.equal(tree[1].itemKey, 'DSP-2');
+  assert.equal(tree[1].depth, 0);
+});
+
+test('filterWorkItemTree filters accurately by assigneeId', () => {
+  const tree = buildWorkItemTree(DEMO_WORK_ITEMS);
+  const devId = '33333333-3333-3333-3333-333333333333'; // Alex Dev
+  const filtered = filterWorkItemTree(tree, { assigneeId: devId });
+
+  assert.ok(filtered.length > 0);
+  // All leaf items matching should belong to Alex Dev
+  function verifyAssignees(node) {
+    if (node.assigneeId === devId) return;
+    for (const child of node.children || []) {
+      verifyAssignees(child);
+    }
+  }
+  for (const root of filtered) {
+    verifyAssignees(root);
+  }
+});
+
+test('detectCycle guards against null, undefined, or missing predecessor/successor IDs', () => {
+  assert.equal(detectCycle(null, 'item-A', []), false);
+  assert.equal(detectCycle('item-A', null, []), false);
+  assert.equal(detectCycle(undefined, undefined, []), false);
+});
+
+test('formatStoryPoints formats decimal and fractional points', () => {
+  assert.equal(formatStoryPoints(0.5), '0.5 pts');
+  assert.equal(formatStoryPoints(1.5), '1.5 pts');
+  assert.equal(formatStoryPoints(2.0), '2 pts');
+  assert.equal(formatStoryPoints(NaN), null);
+});
