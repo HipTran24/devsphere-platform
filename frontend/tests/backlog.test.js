@@ -163,3 +163,74 @@ test('formatEstimate and formatStoryPoints handle various minute and point value
   assert.equal(formatStoryPoints(0), '0 pts');
   assert.equal(formatStoryPoints(null), null);
 });
+
+test('detectCycle supports diamond dependencies, cross-branch links, and long DAG chains', () => {
+  // Diamond graph: A -> B -> D and A -> C -> D
+  const diamondDeps = [
+    { predecessorId: 'node-A', successorId: 'node-B' },
+    { predecessorId: 'node-A', successorId: 'node-C' },
+    { predecessorId: 'node-B', successorId: 'node-D' },
+    { predecessorId: 'node-C', successorId: 'node-D' },
+  ];
+
+  // Adding B -> C or C -> B should be valid (cross-branch without cycle)
+  assert.equal(detectCycle('node-B', 'node-C', diamondDeps), false);
+
+  // But adding D -> A creates a cycle back to the source
+  assert.equal(detectCycle('node-D', 'node-A', diamondDeps), true);
+
+  // Long chain: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9 -> 10
+  const longChain = [];
+  for (let i = 1; i < 10; i++) {
+    longChain.push({ predecessorId: `node-${i}`, successorId: `node-${i + 1}` });
+  }
+  assert.equal(detectCycle('node-10', 'node-1', longChain), true);
+  assert.equal(detectCycle('node-1', 'node-11', longChain), false);
+});
+
+test('topologicalSort handles multi-root branching and preserves valid evaluation order', () => {
+  const ids = ['root-1', 'root-2', 'child-1', 'child-2', 'leaf'];
+  const deps = [
+    { predecessorId: 'root-1', successorId: 'child-1' },
+    { predecessorId: 'root-2', successorId: 'child-2' },
+    { predecessorId: 'child-1', successorId: 'leaf' },
+    { predecessorId: 'child-2', successorId: 'leaf' },
+  ];
+
+  const { sortedIds, hasCycle } = topologicalSort(ids, deps);
+  assert.equal(hasCycle, false);
+  assert.equal(sortedIds.length, 5);
+
+  // Both roots must precede their children
+  assert.ok(sortedIds.indexOf('root-1') < sortedIds.indexOf('child-1'));
+  assert.ok(sortedIds.indexOf('root-2') < sortedIds.indexOf('child-2'));
+  // Both children must precede leaf
+  assert.ok(sortedIds.indexOf('child-1') < sortedIds.indexOf('leaf'));
+  assert.ok(sortedIds.indexOf('child-2') < sortedIds.indexOf('leaf'));
+});
+
+test('filterWorkItemTree handles multiple active filters simultaneously', () => {
+  const tree = buildWorkItemTree(DEMO_WORK_ITEMS);
+
+  // Combined filter: search "Redis" AND status "DONE" AND type "TASK"
+  const filtered = filterWorkItemTree(tree, {
+    search: 'Redis',
+    status: 'DONE',
+    type: 'TASK',
+  });
+
+  assert.equal(filtered.length, 1); // DSP-1 ancestor kept
+  const epic = filtered[0];
+  assert.equal(epic.itemKey, 'DSP-1');
+  const story = epic.children[0];
+  assert.equal(story.itemKey, 'DSP-3');
+  const task = story.children[0];
+  assert.equal(task.itemKey, 'DSP-8');
+  assert.equal(task.status, 'DONE');
+});
+
+test('filterWorkItemTree returns empty array when no items match criteria', () => {
+  const tree = buildWorkItemTree(DEMO_WORK_ITEMS);
+  const filtered = filterWorkItemTree(tree, { search: 'NON_EXISTENT_QUERY_XYZ_12345' });
+  assert.deepEqual(filtered, []);
+});
