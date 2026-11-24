@@ -1,0 +1,104 @@
+.column {
+  background: #141416;
+  border: 1px solid #27272a;
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  min-height: 480px;
+  flex: 1;
+  min-width: 270px;
+}
+
+.columnHeader {
+  padding: 14px 16px;
+  border-bottom: 1px solid #27272a;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.titleGroup {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.columnIndicator {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.indicatorSlate {
+  background: #94a3b8;
+}
+
+.indicatorBlue {
+  background: #3b82f6;
+}
+
+.indicatorPurple {
+  background: #a855f7;
+}
+
+.indicatorEmerald {
+  background: #10b981;
+}
+
+.columnTitle {
+  font-size: 14px;
+  font-weight: 700;
+  color: #f4f4f5;
+  margin: 0;
+}
+
+.badgesGroup {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.countBadge {
+  font-size: 11px;
+  font-weight: 700;
+  color: #a1a1aa;
+  background: #1f1f23;
+  border: 1px solid #2e2e33;
+  padding: 2px 7px;
+  border-radius: 9999px;
+}
+
+.pointsBadge {
+  font-size: 11px;
+  font-weight: 600;
+  color: #2dd4bf;
+  background: rgba(45, 212, 191, 0.1);
+  border: 1px solid rgba(45, 212, 191, 0.25);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.cardList {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex: 1;
+  overflow-y: auto;
+}
+
+.emptyColumn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  padding: 32px 16px;
+  color: #71717a;
+  font-size: 13px;
+  text-align: center;
+  border: 1px dashed #27272a;
+  border-radius: 6px;
+  margin: 12px;
+}
