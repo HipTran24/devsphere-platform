@@ -150,7 +150,23 @@
 }
 
 .accountPending {
-    color: var(--color-text);
+    width: 100%;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--color-text-secondary);
+    text-align: left;
+    cursor: default;
+}
+
+.accountPending:focus-visible {
+    background: color-mix(in srgb, var(--color-text) 6%, var(--color-card));
+}
+
+.accountPendingTag {
+    margin-inline-start: auto;
+    font-size: 11px;
+    color: var(--color-text-secondary);
 }
 
 .accountPending svg {

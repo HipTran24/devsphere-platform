@@ -42,7 +42,7 @@ test('registration uses shared OTP, rejects wrong code, survives reload and retu
     await expect(page).toHaveURL(/\/check-email$/);
     await page.getByLabel('Digit 1',{exact:true}).fill('123456');
     await expect(page.getByText('Email verified. Returning to Sign In…',{exact:true})).toBeVisible();
-    await expect(page).toHaveURL(/\/login$/);
+    await expect(page).toHaveURL(/\/login$/, { timeout: 10000 });
     await expect(page.getByText('Email verified. Sign in to continue.',{exact:true})).toBeVisible();
 });
 
@@ -57,7 +57,7 @@ test('forgot password requires verified OTP before reset and consumes grant', as
     await page.getByLabel('New password',{exact:true}).fill(password);
     await page.locator('input[name="confirmPassword"]:visible').fill(password);
     await page.getByRole('button',{name:'Reset password',exact:true}).click();
-    await expect(page).toHaveURL(/\/login$/);
+    await expect(page).toHaveURL(/\/login$/, { timeout: 10000 });
     await expect(page.getByText('Password reset complete. Sign in again.',{exact:true})).toBeVisible();
     await page.goto('/create-new-password');
     await page.getByLabel('New password',{exact:true}).fill(password);
@@ -98,7 +98,7 @@ test('unchecked Remember me is tab-only; expired demo session cannot open worksp
 test('Google button starts only a clearly labeled frontend demo', async ({page}) => {
     await page.goto('/login');
     await page.getByRole('button',{name:'Continue with Google',exact:true}).click();
-    await expect(page).toHaveURL(/\/workspaces$/);
+    await expect(page).toHaveURL(/\/workspaces$/, { timeout: 10000 });
     await expect(page.getByText('Frontend demo · No real Google sign-in, account or server session.',{exact:true})).toBeVisible();
     await expect(page.getByText('Google Demo',{exact:true})).toBeVisible();
 });

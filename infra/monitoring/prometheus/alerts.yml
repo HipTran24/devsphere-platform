@@ -1,0 +1,100 @@
+groups:
+  - name: devsphere-availability
+    rules:
+      - alert: DevSphereBackendDown
+        expr: up{job="devsphere-backend"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "DevSphere backend is not scrapeable"
+          description: "Prometheus cannot scrape backend:8081 for 2 minutes. Check the container, its readiness probe, and the scrape token (refresh-scrape-token.sh)."
+
+      - alert: DevSphereHigh5xxRate
+        expr: |
+          sum(rate(http_server_requests_seconds_count{job="devsphere-backend", status=~"5.."}[5m]))
+            /
+          clamp_min(sum(rate(http_server_requests_seconds_count{job="devsphere-backend"}[5m])), 1) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "More than 5% of API responses are HTTP 5xx"
+          description: "5xx ratio over the last 5 minutes is {{ $value | humanizePercentage }}."
+
+      - alert: DevSphereHighLatencyP95
+        # Requires HTTP histograms; enabled through JAVA_OPTS in compose.prod.yaml.
+        expr: |
+          histogram_quantile(0.95,
+            sum by (le) (rate(http_server_requests_seconds_bucket{job="devsphere-backend"}[5m]))) > 1.5
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "API p95 latency above 1.5s"
+          description: "p95 request latency has been {{ $value | humanizeDuration }} for 10 minutes."
+
+  - name: devsphere-jobs
+    rules:
+      - alert: DevSphereSolverSlow
+        expr: |
+          sum by (solver) (rate(devsphere_solver_duration_seconds_sum[15m]))
+            /
+          clamp_min(sum by (solver) (rate(devsphere_solver_duration_seconds_count[15m])), 1e-9) > 30
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "CP-SAT solver runs are slow"
+          description: "Average {{ $labels.solver }} solve time is {{ $value | humanizeDuration }} (threshold 30s)."
+
+      - alert: DevSphereQuartzJobFailures
+        expr: sum by (quartz_job) (increase(devsphere_quartz_job_executions_total{outcome="failure"}[15m])) > 0
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Quartz job {{ $labels.quartz_job }} failed"
+          description: "{{ $value }} failed execution(s) of {{ $labels.quartz_job }} in the last 15 minutes."
+
+      - alert: DevSphereOutboxBacklog
+        expr: devsphere_jobs_queued > 100
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Outbox backlog above 100 queued jobs"
+          description: "{{ $value }} background jobs have been waiting for more than 15 minutes. Failed jobs: {{ with query \"devsphere_jobs_failed\" }}{{ . | first | value }}{{ end }}."
+
+      - alert: DevSphereWebhookFailureSpike
+        expr: sum(increase(devsphere_webhook_failures_total[10m])) > 20
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: "GitHub webhook failure spike"
+          description: "{{ $value }} webhook deliveries were rejected or failed in 10 minutes."
+
+  - name: devsphere-platform
+    rules:
+      - alert: DevSphereBackupOverdue
+        # The gauge is 0 until the first successful nightly check, so a missing backup also fires.
+        expr: time() - devsphere_backup_last_success_timestamp_seconds > 26 * 3600
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "No successful database backup in the last 26 hours"
+          description: "Run infra/backup/backup-postgres.sh and inspect the cron log."
+
+      - alert: DevSphereJvmHeapPressure
+        expr: |
+          sum by (instance) (jvm_memory_used_bytes{job="devsphere-backend", area="heap"})
+            /
+          sum by (instance) (jvm_memory_max_bytes{job="devsphere-backend", area="heap"}) > 0.9
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "JVM heap above 90%"
+          description: "Heap usage has been {{ $value | humanizePercentage }} for 10 minutes."

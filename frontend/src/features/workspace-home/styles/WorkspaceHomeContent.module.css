@@ -116,10 +116,43 @@
     scroll-margin-top: calc(var(--workspace-navbar-height) + var(--workspace-section-padding));
 }
 
+.notificationHeader {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+
 .notificationFilters {
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
+}
+
+.markAllReadButton {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 32px;
+    padding: 4px 10px;
+    border: 1px solid #30302e;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--color-text-secondary);
+    font: inherit;
+    font-size: 13px;
+    cursor: pointer;
+}
+
+.markAllReadButton:hover:enabled {
+    background-color: #262626;
+    color: var(--color-text);
+}
+
+.markAllReadButton:disabled {
+    opacity: 0.45;
+    cursor: default;
 }
 
 .notificationFilters button,
@@ -529,8 +562,15 @@
     text-decoration: underline;
 }
 
-.inviteList:has(.emptyInvites) {
+.inviteList:has(.emptyInvites),
+.inviteList:has(.inviteStatePanel) {
     align-content: center;
+}
+
+.inviteStatePanel {
+    grid-column: 1 / -1;
+    justify-self: center;
+    width: 90%;
 }
 
 .emptyInvites {

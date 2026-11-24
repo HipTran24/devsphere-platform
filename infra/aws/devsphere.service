@@ -1,0 +1,25 @@
+[Unit]
+Description=DevSphere production stack (Docker Compose)
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+User=devsphere
+Group=devsphere
+WorkingDirectory=/opt/devsphere
+ExecStart=/usr/bin/docker compose -f compose.prod.yaml --env-file .env up -d --remove-orphans
+ExecStop=/usr/bin/docker compose -f compose.prod.yaml --env-file .env down
+ExecReload=/usr/bin/docker compose -f compose.prod.yaml --env-file .env up -d --remove-orphans
+TimeoutStartSec=600
+TimeoutStopSec=120
+
+# Sandboxing for the unit itself (containers keep their own isolation).
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=full
+
+[Install]
+WantedBy=multi-user.target

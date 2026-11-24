@@ -18,7 +18,7 @@ export default function WorkspaceHomeMain({ children }) {
     }
 
     return (
-        <main>
+        <main id="main-content" tabIndex={-1}>
             <WorkspaceHomeHero workspaces={workspaces} onCreate={createWorkspace} />
             <div className={styles.creationAnnouncement} role="status">{announcement}</div>
             {children}

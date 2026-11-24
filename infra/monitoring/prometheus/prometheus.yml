@@ -1,0 +1,44 @@
+# Prometheus scrape configuration for the DevSphere production stack.
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    environment: production
+    service: devsphere
+
+rule_files:
+  - /etc/prometheus/alerts.yml
+
+# No Alertmanager is bundled. Firing alerts are visible in Prometheus and Grafana;
+# add an `alerting:` block here to route them to Slack, PagerDuty or e-mail.
+
+scrape_configs:
+  - job_name: devsphere-backend
+    metrics_path: /actuator/prometheus
+    scheme: http
+    # Actuator is served on the internal management port (8081) and requires a
+    # ROLE_ADMIN bearer token. infra/monitoring/refresh-scrape-token.sh keeps the
+    # short-lived (15 min) token fresh in this file.
+    authorization:
+      type: Bearer
+      credentials_file: /etc/prometheus/secrets/admin-token
+    static_configs:
+      - targets: ["backend:8081"]
+        labels:
+          application: devsphere
+    # Quartz metrics carry their own `job` label, which collides with the scrape
+    # job label and is exposed as `exported_job`. Rename it to `quartz_job`.
+    metric_relabel_configs:
+      - source_labels: [exported_job]
+        regex: (.+)
+        target_label: quartz_job
+      - action: labeldrop
+        regex: exported_job
+
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  - job_name: loki
+    static_configs:
+      - targets: ["loki:3100"]

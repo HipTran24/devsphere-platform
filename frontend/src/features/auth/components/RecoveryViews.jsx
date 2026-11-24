@@ -118,12 +118,32 @@ export function CheckEmailView() {
                 autoComplete={index===0 ? 'one-time-code' : 'off'} aria-label={`Digit ${index+1}`}
                 aria-invalid={invalid || undefined} aria-describedby={invalid ? errorId : undefined} disabled={pending || success}
                 value={digit} onChange={event => updateDigit(index,event.target.value)} onKeyDown={event => {
-                    if (event.key === 'Backspace' && !digit && index>0) inputs.current[index-1]?.focus();
-                    if (event.key === 'ArrowLeft' && index>0) inputs.current[index-1]?.focus();
-                    if (event.key === 'ArrowRight' && index<5) inputs.current[index+1]?.focus();
+                    if (event.key === 'Backspace' && !digit && index > 0) {
+                        event.preventDefault();
+                        const next = [...digits];
+                        next[index - 1] = '';
+                        setDigits(next);
+                        inputs.current[index - 1]?.focus();
+                    }
+                    if (event.key === 'ArrowLeft' && index > 0) {
+                        event.preventDefault();
+                        inputs.current[index - 1]?.focus();
+                    }
+                    if (event.key === 'ArrowRight' && index < 5) {
+                        event.preventDefault();
+                        inputs.current[index + 1]?.focus();
+                    }
+                    if (event.key === 'Home') {
+                        event.preventDefault();
+                        inputs.current[0]?.focus();
+                    }
+                    if (event.key === 'End') {
+                        event.preventDefault();
+                        inputs.current[5]?.focus();
+                    }
                 }} />)}
         </div>
-        <p id={errorId} className={`${formStyles.registrationMessage} ${success ? formStyles.successMessage : ''}`} role="status" hidden={!message}>{message}</p>
+        <p id={errorId} className={`${formStyles.registrationMessage} ${success ? formStyles.successMessage : ''}`} role="status" aria-live="polite" aria-atomic="true" hidden={!message}>{message}</p>
         <p className={styles.resend}>Didn’t get it? <button type="button" disabled={pending || success || seconds>0} onClick={async () => {
             if (busy.current) return;
             if (!flow || flow.stage!=='code') { router.replace('/forgot-password'); return; }
@@ -154,7 +174,7 @@ export function CreateNewPasswordView() {
                 const flow=getAuthFlow();
                 if (!flow || flow.stage!=='password') throw new AuthError('RESET_REQUIRED','Verify your code first.');
                 await resetPassword({resetGrantId:flow.resetGrantId,password:data.password});
-                element.reset(); clearAuthFlow(); auth.logout();
+                element.reset(); clearAuthFlow();
                 auth.setNotice('Password reset complete. Sign in again.');
                 router.replace('/login');
             })}>

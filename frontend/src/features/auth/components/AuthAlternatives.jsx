@@ -26,7 +26,7 @@ export default function AuthAlternatives({ mode = "register", disabled = false, 
                 } catch (error) { onError?.(error); }
                 finally { lock.current = false; setPending(false); }
             }}>
-                <img src="/google-g.svg" width="15" height="15" alt="" />
+                <img src="/google-g.svg" width="15" height="15" alt="" loading="lazy" decoding="async" />
                 {pending ? 'Continuing…' : 'Continue with Google'}
             </button>
             <p className={styles.footer}>

@@ -9,12 +9,18 @@
 .titleRow h1 { margin: 0; }
 .secondary, .empty p { color: var(--color-text-secondary); }
 .demo { color: var(--color-primary); font-size: 12px; }
+.stateSpacing { margin-top: 24px; }
 .empty { margin-top: 32px; padding: 40px 24px; border: 1px solid #333; border-radius: 16px; text-align: center; background: var(--color-card); }
 .empty h2 { font-size: 20px; }
-.createBtn { background: var(--color-primary, #6366f1); color: #fff; border: none; border-radius: 8px; padding: 10px 18px; font-weight: 600; cursor: pointer; font-size: 14px; }
-.createBtn:hover { opacity: 0.9; }
+.createBtn { background: var(--color-primary, #2DD4BF); color: var(--color-black); border: 1px solid var(--color-primary, #2DD4BF); border-radius: 8px; padding: 10px 18px; font-weight: 700; cursor: pointer; font-size: 14px; }
+.createBtn:hover { opacity: 0.92; }
 .workspaceGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; margin-top: 24px; }
-.workspaceCard { background: var(--color-card, #1e1e24); border: 1px solid #333; border-radius: 12px; padding: 20px; display: flex; flex-direction: column; gap: 10px; }
+.workspaceCard { background: var(--color-card, #1e1e24); border: 1px solid #333; border-radius: 12px; padding: 20px; display: flex; flex-direction: column; gap: 10px; cursor: pointer; transition: border-color 0.15s ease, transform 0.15s ease; }
+.workspaceCard:hover { border-color: var(--color-primary, #2DD4BF); transform: translateY(-2px); }
+.workspaceCard:focus-visible { outline: 2px solid var(--color-primary, #2DD4BF); outline-offset: 2px; }
+.cardActions { margin-top: auto; padding-top: 12px; display: flex; justify-content: flex-end; }
+.openBacklogBtn { background: transparent; border: 1px solid #3f3f46; color: var(--color-primary, #2DD4BF); border-radius: 6px; padding: 6px 12px; font-size: 13px; font-weight: 600; cursor: pointer; transition: background 0.15s ease; }
+.openBacklogBtn:hover { background: rgba(45, 212, 191, 0.1); border-color: var(--color-primary, #2DD4BF); }
 .cardHeader { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
 .cardTitle { font-size: 18px; font-weight: 600; margin: 0; color: var(--color-text); }
 .cardSlug { font-size: 12px; color: var(--color-text-secondary); font-family: monospace; }
@@ -30,9 +36,9 @@
 .formGroup { margin-bottom: 16px; }
 .formGroup label { display: block; font-size: 13px; font-weight: 500; margin-bottom: 6px; color: var(--color-text); }
 .formGroup input, .formGroup textarea { width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid #3f3f46; background: #09090b; color: #fff; font-size: 14px; box-sizing: border-box; }
-.formGroup input:focus, .formGroup textarea:focus { border-color: #6366f1; outline: none; }
+.formGroup input:focus-visible, .formGroup textarea:focus-visible { border-color: var(--color-primary); outline: 2px solid var(--color-primary); outline-offset: 2px; }
 .formActions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 24px; }
 .cancelBtn { background: transparent; border: 1px solid #3f3f46; color: #d4d4d8; border-radius: 8px; padding: 8px 16px; cursor: pointer; }
-.submitBtn { background: #6366f1; border: none; color: #fff; border-radius: 8px; padding: 8px 20px; font-weight: 600; cursor: pointer; }
+.submitBtn { background: var(--color-primary); border: 1px solid var(--color-primary); color: var(--color-black); border-radius: 8px; padding: 8px 20px; font-weight: 700; cursor: pointer; }
 .submitBtn:disabled { opacity: 0.5; cursor: not-allowed; }
 .errorMessage { background: #450a0a; border: 1px solid #b91c1c; color: #fca5a5; padding: 8px 12px; border-radius: 6px; font-size: 13px; margin-bottom: 16px; }

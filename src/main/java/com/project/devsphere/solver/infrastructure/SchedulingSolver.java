@@ -16,6 +16,8 @@ import com.project.devsphere.resource.api.TimeOff;
 import com.project.devsphere.resource.api.WeeklySlot;
 import com.project.devsphere.solver.domain.SolverInputSnapshot;
 import com.project.devsphere.solver.domain.SolverResult;
+import com.project.devsphere.operations.infrastructure.metrics.OperationsMetrics;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -42,7 +44,30 @@ public class SchedulingSolver implements com.project.devsphere.solver.applicatio
         Loader.loadNativeLibraries();
     }
 
+    private OperationsMetrics metrics;
+
+    /** Optional telemetry recording devsphere_solver_duration_seconds{solver,status}. */
+    @Autowired(required = false)
+    public void setOperationsMetrics(OperationsMetrics metrics) {
+        this.metrics = metrics;
+    }
+
+    @Override
     public SolverResult solve(SolverInputSnapshot snapshot) {
+        long started = System.nanoTime();
+        SolverResult result = null;
+        try {
+            result = solveSnapshot(snapshot);
+            return result;
+        } finally {
+            if (metrics != null) {
+                String status = result == null || result.status() == null ? "ERROR" : result.status().name();
+                metrics.recordSolverRun("cp-sat", status, System.nanoTime() - started);
+            }
+        }
+    }
+
+    private SolverResult solveSnapshot(SolverInputSnapshot snapshot) {
         if (snapshot == null) {
             return SolverResult.error("SolverInputSnapshot must not be null");
         }

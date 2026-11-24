@@ -22,7 +22,7 @@ public class AttachmentService {
 
     private static final long MAX_FILE_SIZE = 20971520L; // 20MB
     private static final Pattern SHA256_PATTERN = Pattern.compile("^[0-9a-f]{64}$");
-    private static final long PRESIGNED_EXPIRY_SECONDS = 900L; // 15 minutes
+    private static final long PRESIGNED_EXPIRY_SECONDS = 300L; // 5 minutes, the storage adapters' maximum
 
     private static final Set<String> ALLOWED_MIME_TYPES = Set.of(
             "image/png",
@@ -142,7 +142,7 @@ public class AttachmentService {
         }
 
         String sanitizedFilename = command.filename() != null
-                ? command.filename().replaceAll("[^a-zA-Z0-9._-]", "_")
+                ? command.filename().replaceAll("[^a-zA-Z0-9._-]", "_").replaceAll("\\.{2,}", ".")
                 : "attachment";
         String storageKey = String.format("workspaces/%s/projects/%s/attachments/%s/%s",
                 workspaceId, projectId, UUID.randomUUID(), sanitizedFilename);

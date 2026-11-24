@@ -6,7 +6,7 @@ export default defineConfig({
     fullyParallel: false,
     workers: 1,
     reporter: 'list',
-    use: { baseURL: 'http://127.0.0.1:3200', trace: 'retain-on-failure', channel: process.env.CI ? undefined : 'chrome' },
+    use: { baseURL: 'http://127.0.0.1:3200', trace: 'on-first-retry', channel: process.env.CI ? undefined : 'chrome' },
     projects: [
         { name: 'desktop', use: { ...devices['Desktop Chrome'] } },
         { name: 'mobile', use: { viewport: { width: 390, height: 844 } } },

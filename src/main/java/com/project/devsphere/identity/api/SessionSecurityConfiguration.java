@@ -32,6 +32,9 @@ import org.springframework.security.web.csrf.XorCsrfTokenRequestAttributeHandler
 import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
 import org.springframework.security.web.util.matcher.OrRequestMatcher;
 import org.springframework.security.web.util.matcher.RequestMatcher;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 @Configuration(proxyBeanMethods = false)
@@ -45,6 +48,8 @@ public class SessionSecurityConfiguration {
     private static final RequestMatcher CURRENT_USER = ROUTES.matcher(HttpMethod.GET, "/api/v1/auth/me");
     private static final RequestMatcher ADMIN_ENDPOINTS = ROUTES.matcher("/api/v1/admin/**");
     private static final RequestMatcher ADMIN_PATCH_ENDPOINTS = ROUTES.matcher(HttpMethod.PATCH, "/api/v1/admin/**");
+    private static final RequestMatcher ADMIN_POST_ENDPOINTS = ROUTES.matcher(HttpMethod.POST, "/api/v1/admin/**");
+    private static final RequestMatcher OPERATIONS_ADMIN_ENDPOINTS = ROUTES.matcher("/api/v1/admin/operations/**");
     private static final RequestMatcher WORKSPACE_ENDPOINTS = ROUTES.matcher("/api/v1/workspaces/**");
     private static final RequestMatcher WORKSPACE_POST_ENDPOINTS = ROUTES.matcher(HttpMethod.POST, "/api/v1/workspaces/**");
     private static final RequestMatcher WORKSPACE_PUT_ENDPOINTS = ROUTES.matcher(HttpMethod.PUT, "/api/v1/workspaces/**");
@@ -54,8 +59,14 @@ public class SessionSecurityConfiguration {
     private static final RequestMatcher CLIENT_PORTAL_POST_ENDPOINTS = ROUTES.matcher(HttpMethod.POST, "/api/v1/client-portal/**");
     private static final RequestMatcher CLIENT_PORTAL_PUT_ENDPOINTS = ROUTES.matcher(HttpMethod.PUT, "/api/v1/client-portal/**");
     private static final RequestMatcher CLIENT_PORTAL_PATCH_ENDPOINTS = ROUTES.matcher(HttpMethod.PATCH, "/api/v1/client-portal/**");
+    private static final RequestMatcher ACTUATOR_PUBLIC_HEALTH = new OrRequestMatcher(
+            ROUTES.matcher(HttpMethod.GET, "/actuator/health"),
+            ROUTES.matcher(HttpMethod.GET, "/actuator/health/liveness"),
+            ROUTES.matcher(HttpMethod.GET, "/actuator/health/readiness"));
+    private static final RequestMatcher ACTUATOR_ENDPOINTS = ROUTES.matcher("/actuator/**");
     private static final RequestMatcher BEARER_ENDPOINTS =
-            new OrRequestMatcher(CURRENT_USER, LIST_SESSIONS, REVOKE_SESSION, ADMIN_ENDPOINTS, WORKSPACE_ENDPOINTS, CLIENT_PORTAL_ENDPOINTS);
+            new OrRequestMatcher(CURRENT_USER, LIST_SESSIONS, REVOKE_SESSION, ADMIN_ENDPOINTS, WORKSPACE_ENDPOINTS, CLIENT_PORTAL_ENDPOINTS,
+                    ACTUATOR_ENDPOINTS);
 
     @Bean
     public SecurityFilterChain securityFilterChain(
@@ -73,12 +84,14 @@ public class SessionSecurityConfiguration {
         XorCsrfTokenRequestAttributeHandler csrfTokenRequestHandler = new XorCsrfTokenRequestAttributeHandler();
 
         http
+            .cors(cors -> cors.configurationSource(corsConfigurationSource()))
             .csrf(csrf -> csrf
                 .csrfTokenRepository(csrfTokenRepository)
                 .csrfTokenRequestHandler(csrfTokenRequestHandler)
                 .ignoringRequestMatchers(
                     REVOKE_SESSION,
                     ADMIN_PATCH_ENDPOINTS,
+                    ADMIN_POST_ENDPOINTS,
                     WORKSPACE_POST_ENDPOINTS,
                     WORKSPACE_PUT_ENDPOINTS,
                     WORKSPACE_PATCH_ENDPOINTS,
@@ -120,6 +133,9 @@ public class SessionSecurityConfiguration {
                 .requestMatchers(HttpMethod.POST, "/api/v1/auth/refresh").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/v1/auth/logout").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/v1/auth/csrf").permitAll()
+                .requestMatchers(ACTUATOR_PUBLIC_HEALTH).permitAll()
+                .requestMatchers(ACTUATOR_ENDPOINTS).hasRole("ADMIN")
+                .requestMatchers(OPERATIONS_ADMIN_ENDPOINTS).hasRole("ADMIN")
                 .requestMatchers(ADMIN_ENDPOINTS).hasRole("ADMIN")
                 .requestMatchers(BEARER_ENDPOINTS).authenticated()
                 .requestMatchers("/api/**").denyAll()
@@ -131,6 +147,33 @@ public class SessionSecurityConfiguration {
             );
 
         return http.build();
+    }
+
+    @Bean
+    public CorsConfigurationSource corsConfigurationSource() {
+        CorsConfiguration config = new CorsConfiguration();
+        config.setAllowedOriginPatterns(List.of(
+                "http://localhost:3000",
+                "http://127.0.0.1:3000",
+                "http://localhost:3200",
+                "http://127.0.0.1:3200"
+        ));
+        config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
+        config.setAllowedHeaders(List.of(
+                "Authorization",
+                "X-CSRF-TOKEN",
+                "Content-Type",
+                "Accept",
+                "Origin",
+                "X-Requested-With"
+        ));
+        config.setExposedHeaders(List.of("Set-Cookie", "X-CSRF-TOKEN"));
+        config.setAllowCredentials(true);
+        config.setMaxAge(3600L);
+
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", config);
+        return source;
     }
 
     private static void writeProblem(HttpServletResponse response, int status, String title, String code) throws IOException {

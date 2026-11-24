@@ -1,0 +1,31 @@
+{
+  "Rules": [
+    {
+      "ID": "abort-incomplete-multipart-uploads",
+      "Status": "Enabled",
+      "Filter": { "Prefix": "" },
+      "AbortIncompleteMultipartUpload": { "DaysAfterInitiation": 2 }
+    },
+    {
+      "ID": "expire-daily-backups",
+      "Status": "Enabled",
+      "Filter": { "Prefix": "postgres/daily/" },
+      "Expiration": { "Days": 14 }
+    },
+    {
+      "ID": "weekly-backups-to-glacier-then-expire",
+      "Status": "Enabled",
+      "Filter": { "Prefix": "postgres/weekly/" },
+      "Transitions": [
+        { "Days": 30, "StorageClass": "GLACIER_IR" }
+      ],
+      "Expiration": { "Days": 120 }
+    },
+    {
+      "ID": "expire-noncurrent-versions",
+      "Status": "Enabled",
+      "Filter": { "Prefix": "" },
+      "NoncurrentVersionExpiration": { "NoncurrentDays": 30 }
+    }
+  ]
+}

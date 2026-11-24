@@ -1,0 +1,137 @@
+name: DevSphere CI Pipeline
+
+on:
+  push:
+    branches:
+      - main
+      - 'feature/**'
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  backend-verify:
+    name: Backend Verify (JDK 27 & Maven)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: devsphere
+          POSTGRES_USER: devsphere
+          POSTGRES_PASSWORD: devsphere_ci_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 27
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '27'
+          cache: 'maven'
+
+      - name: Verify Backend (Unit, Integration & Architecture Tests)
+        env:
+          SPRING_PROFILES_ACTIVE: test
+          SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/devsphere
+          SPRING_DATASOURCE_USERNAME: devsphere
+          SPRING_DATASOURCE_PASSWORD: devsphere_ci_password
+          AUTH_SESSION_SIGNING_KEY: dGVzdF9zaWduaW5nX2tleV9mb3JfZGV2c3BoZXJlX2NpX2tleV8xMjM0NTY3ODk=
+        run: |
+          ./mvnw -B verify
+
+  frontend-check:
+    name: Frontend Lint, Test & Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Run ESLint
+        working-directory: frontend
+        run: npm run lint
+
+      - name: Run Unit & Accessibility Tests
+        working-directory: frontend
+        run: npm test
+
+      - name: Build Next.js Production Bundle
+        working-directory: frontend
+        run: npm run build
+
+  frontend-e2e:
+    name: Frontend E2E (Playwright)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Install Playwright Browsers
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Playwright E2E Suite
+        working-directory: frontend
+        run: npm run test:e2e -- --forbid-only
+
+  infra-and-ai-verify:
+    name: Infra & AI Subagent Workflow Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Run AI Subagent Workflow Tests
+        run: |
+          python3 -m unittest discover -s tests/ai -v
+
+      - name: Run Infrastructure & Security Configuration Tests
+        run: |
+          python3 -m unittest discover -s tests/infra -v

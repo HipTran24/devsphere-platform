@@ -7,9 +7,15 @@
     "test": "tests"
   },
   "scripts": {
-    "test": "node --test tests/auth.test.js tests/session.test.js",
+    "test": "node --test tests/auth.test.js tests/session.test.js tests/ui-states.test.js tests/api-client.test.js tests/backlog.test.js tests/sprints.test.js tests/planning.test.js",
+    "test:backlog": "node --test tests/backlog.test.js",
+    "test:sprints": "node --test tests/sprints.test.js",
+    "test:planning": "node --test tests/planning.test.js",
     "lint": "eslint . --max-warnings=0",
     "test:e2e": "playwright test",
+    "test:e2e:backlog": "playwright test tests/e2e/backlog.spec.js",
+    "test:e2e:sprints": "playwright test tests/e2e/sprints.spec.js",
+    "test:e2e:planning": "playwright test tests/e2e/planning.spec.js",
     "dev": "next dev",
     "build": "next build",
     "start": "next start"
@@ -19,6 +25,7 @@
   "license": "ISC",
   "type": "module",
   "dependencies": {
+    "lucide-react": "^1.74.0",
     "next": "^16.4.5",
     "react": "^19.3.1",
     "react-dom": "^19.3.1"
