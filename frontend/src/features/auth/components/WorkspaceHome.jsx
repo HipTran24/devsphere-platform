@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { FolderPlus } from "lucide-react";
 import { useAuth } from "./AuthProvider";
+import { isAuthMock } from "../api";
 import LoadingState from "../../../components/ui/LoadingState";
 import ErrorState from "../../../components/ui/ErrorState";
 import EmptyState from "../../../components/ui/EmptyState";
@@ -100,6 +101,19 @@ export default function WorkspaceHome() {
                             "Unable to reach the workspace service. Check your connection and try again."
                         )
                     );
+                } else if (auth.session?.mock || isAuthMock) {
+                    setWorkspaces([
+                        {
+                            id: "devsphere-core",
+                            name: "DevSphere Core",
+                            slug: "devsphere-core",
+                            role: "OWNER",
+                            status: "ACTIVE",
+                            projectKey: "DSP",
+                            description: "Primary engineering workspace for DevSphere Platform",
+                        },
+                    ]);
+                    setLoadError(null);
                 } else {
                     setWorkspaces([]);
                     setLoadError(null);
@@ -245,8 +259,24 @@ export default function WorkspaceHome() {
                     <div className={styles.workspaceGrid}>
                         {workspaces.map((ws) => {
                             const isOwner = ws.role === "OWNER" || ws.ownerId === auth.session.user?.id;
+                            const targetUrl = ws.projectKey
+                                ? `/p/${ws.projectKey}/backlog`
+                                : `/workspaces/${ws.id || ws.slug}/backlog`;
                             return (
-                                <article key={ws.id || ws.slug} className={styles.workspaceCard}>
+                                <article
+                                    key={ws.id || ws.slug}
+                                    className={styles.workspaceCard}
+                                    tabIndex={0}
+                                    role="button"
+                                    aria-label={`Open workspace ${ws.name} backlog`}
+                                    onClick={() => router.push(targetUrl)}
+                                    onKeyDown={(e) => {
+                                        if (e.key === "Enter" || e.key === " ") {
+                                            e.preventDefault();
+                                            router.push(targetUrl);
+                                        }
+                                    }}
+                                >
                                     <div className={styles.cardHeader}>
                                         <h2 className={styles.cardTitle}>{ws.name}</h2>
                                         <div className={styles.badges}>
@@ -262,6 +292,18 @@ export default function WorkspaceHome() {
                                     </div>
                                     <span className={styles.cardSlug}>slug: {ws.slug}</span>
                                     {ws.description && <p className={styles.cardDesc}>{ws.description}</p>}
+                                    <div className={styles.cardActions}>
+                                        <button
+                                            type="button"
+                                            className={styles.openBacklogBtn}
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                router.push(targetUrl);
+                                            }}
+                                        >
+                                            Open Backlog &rarr;
+                                        </button>
+                                    </div>
                                 </article>
                             );
                         })}
