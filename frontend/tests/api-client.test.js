@@ -153,3 +153,118 @@ test('apiFetch attaches Authorization and CSRF headers for state-changing reques
     clearCsrfCache();
   }
 });
+
+test('silent refresh interceptor transparently retries 401 requests with new access token', async () => {
+  const originalFetch = globalThis.fetch;
+  let attempts = 0;
+  let refreshCalls = 0;
+
+  globalThis.fetch = async (url, options) => {
+    if (url.includes('/api/v1/auth/csrf')) {
+      return new Response(
+        JSON.stringify({ headerName: 'X-CSRF-TOKEN', parameterName: '_csrf', token: 'csrf-token' }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+    if (url.includes('/api/v1/auth/refresh')) {
+      refreshCalls += 1;
+      return new Response(
+        JSON.stringify({ accessToken: 'new-refreshed-jwt', expiresAt: new Date(Date.now() + 900000).toISOString() }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+
+    if (url.includes('/api/v1/workspaces')) {
+      attempts += 1;
+      const auth = options.headers?.get('Authorization');
+      if (attempts === 1) {
+        // First attempt fails with 401
+        return new Response(
+          JSON.stringify({ code: 'TOKEN_EXPIRED', status: 401, detail: 'Token has expired' }),
+          { status: 401, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+      // Second attempt succeeds if new token is presented
+      assert.equal(auth, 'Bearer new-refreshed-jwt');
+      return new Response(
+        JSON.stringify({ items: [{ id: 'ws-1', name: 'DevSphere Core' }] }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+
+    return new Response('{}', { status: 200 });
+  };
+
+  try {
+    clearCsrfCache();
+    setAccessToken('stale-jwt-token');
+
+    const result = await apiFetch('/api/v1/workspaces');
+    assert.equal(attempts, 2);
+    assert.equal(refreshCalls, 1);
+    assert.equal(getAccessToken(), 'new-refreshed-jwt');
+    assert.deepEqual(result, { items: [{ id: 'ws-1', name: 'DevSphere Core' }] });
+  } finally {
+    globalThis.fetch = originalFetch;
+    clearAccessToken();
+    clearCsrfCache();
+  }
+});
+
+test('failed refresh triggers onAuthFailure notification and rejects with 401', async () => {
+  const originalFetch = globalThis.fetch;
+  let authFailedNotified = false;
+
+  globalThis.fetch = async (url) => {
+    if (url.includes('/api/v1/auth/csrf')) {
+      return new Response(
+        JSON.stringify({ headerName: 'X-CSRF-TOKEN', token: 'csrf' }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+    if (url.includes('/api/v1/auth/refresh')) {
+      return new Response(
+        JSON.stringify({ code: 'INVALID_SESSION', status: 401, detail: 'Session expired' }),
+        { status: 401, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+    return new Response(
+      JSON.stringify({ code: 'UNAUTHORIZED', status: 401, detail: 'Invalid credentials' }),
+      { status: 401, headers: { 'Content-Type': 'application/json' } }
+    );
+  };
+
+  const unsubscribe = onAuthFailure(() => {
+    authFailedNotified = true;
+  });
+
+  try {
+    clearCsrfCache();
+    setAccessToken('expired-token');
+
+    await assert.rejects(
+      async () => {
+        await apiFetch('/api/v1/workspaces');
+      },
+      (err) => {
+        assert.ok(err instanceof ApiClientError);
+        assert.equal(err.status, 401);
+        return true;
+      }
+    );
+
+    assert.equal(authFailedNotified, true);
+    assert.equal(getAccessToken(), null);
+  } finally {
+    unsubscribe();
+    globalThis.fetch = originalFetch;
+    clearAccessToken();
+    clearCsrfCache();
+  }
+});
+
+test('RFC 7807 problem details are translated into structured ApiClientError', async () => {
+  const originalFetch = globalThis.fetch;
+
+  globalThis.fetch = async () => {
+    return new Response(
