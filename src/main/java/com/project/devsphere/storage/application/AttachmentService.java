@@ -256,7 +256,7 @@ public class AttachmentService {
             }
 
             if (shouldVerifyRemoteObject()) {
-                return storageProvider.generatePresignedDownloadUrl(attachment.getStorageKey(), PRESIGNED_EXPIRY_SECONDS);
+                return storageProvider.generatePresignedHeadUrl(attachment.getStorageKey(), PRESIGNED_EXPIRY_SECONDS);
             }
             return null;
         });

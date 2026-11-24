@@ -47,6 +47,13 @@ class S3StorageProviderTest {
         assertThat(query).containsOnlyKeys("action", "expires", "sig").containsEntry("action", "download");
         assertThat(provider.verifySignature("GET", "keys/report.pdf", NOW.getEpochSecond() + 60, null, query.get("sig"))).isTrue();
         assertThat(provider.verifySignature("PUT", "keys/report.pdf", NOW.getEpochSecond() + 60, null, query.get("sig"))).isFalse();
+
+        String head = provider.generatePresignedHeadUrl("keys/report.pdf", 60);
+        Map<String, String> headQuery = query(URI.create(head));
+        assertThat(headQuery).containsOnlyKeys("action", "expires", "sig").containsEntry("action", "head");
+        assertThat(provider.verifySignature("HEAD", "keys/report.pdf", NOW.getEpochSecond() + 60, null, headQuery.get("sig"))).isTrue();
+        assertThat(provider.verifySignature("GET", "keys/report.pdf", NOW.getEpochSecond() + 60, null, headQuery.get("sig"))).isFalse();
+        assertThat(headQuery.get("sig")).isNotEqualTo(query.get("sig"));
     }
 
     @Test

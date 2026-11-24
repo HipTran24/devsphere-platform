@@ -90,6 +90,20 @@ public class S3StorageProvider implements StorageProvider {
     }
 
     @Override
+    public String generatePresignedHeadUrl(String storageKey, long expiresInSeconds) {
+        StorageKeyValidator.requireValidKey(storageKey);
+        StorageKeyValidator.requireValidTtl(expiresInSeconds);
+        long expiryEpoch = Instant.now(clock).plusSeconds(expiresInSeconds).getEpochSecond();
+        String signature = sign("HEAD", storageKey, expiryEpoch, "");
+        return String.format("%s/%s/%s?action=head&expires=%d&sig=%s",
+                endpoint,
+                bucket,
+                encodeKey(storageKey),
+                expiryEpoch,
+                signature);
+    }
+
+    @Override
     public String mode() {
         return "local";
     }

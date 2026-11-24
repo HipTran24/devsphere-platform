@@ -3,6 +3,8 @@ package com.project.devsphere.storage.infrastructure;
 import com.project.devsphere.storage.application.StorageException;
 import com.project.devsphere.storage.application.StorageObjectClient;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.env.Environment;
+import org.springframework.core.env.Profiles;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
@@ -50,22 +52,39 @@ public class HttpPresignedObjectClient implements StorageObjectClient {
     private final Duration requestTimeout;
     private final boolean allowInsecureEndpoint;
 
-    @Autowired
     public HttpPresignedObjectClient(S3StorageProperties properties) {
-        this(properties, null);
+        this(properties, null, null);
+    }
+
+    @Autowired
+    public HttpPresignedObjectClient(
+            S3StorageProperties properties,
+            @Autowired(required = false) Environment environment) {
+        this(properties, null, environment);
     }
 
     HttpPresignedObjectClient(S3StorageProperties properties, HttpClient httpClient) {
+        this(properties, httpClient, null);
+    }
+
+    HttpPresignedObjectClient(
+            S3StorageProperties properties,
+            HttpClient httpClient,
+            Environment environment) {
         Objects.requireNonNull(properties, "properties must not be null");
         long timeoutMs = properties.getHttpTimeoutMs() > 0 ? properties.getHttpTimeoutMs() : DEFAULT_TIMEOUT_MS;
         this.requestTimeout = Duration.ofMillis(timeoutMs);
-        this.allowInsecureEndpoint = properties.isAllowInsecureEndpoint();
+        this.allowInsecureEndpoint = properties.isAllowInsecureEndpoint() && !isProdProfile(environment);
         this.httpClient = httpClient != null
                 ? httpClient
                 : HttpClient.newBuilder()
                         .connectTimeout(this.requestTimeout)
                         .followRedirects(HttpClient.Redirect.NEVER)
                         .build();
+    }
+
+    private static boolean isProdProfile(Environment environment) {
+        return environment != null && environment.acceptsProfiles(Profiles.of("prod"));
     }
 
     @Override

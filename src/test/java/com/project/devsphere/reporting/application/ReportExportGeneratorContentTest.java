@@ -106,6 +106,10 @@ class ReportExportGeneratorContentTest {
         assertThat(ReportExportGenerator.neutralizeFormula("  =HYPERLINK(\"http://evil\")")).isEqualTo("'  =HYPERLINK(\"http://evil\")");
         assertThat(ReportExportGenerator.neutralizeFormula("\t=1+1")).isEqualTo("'\t=1+1");
         assertThat(ReportExportGenerator.neutralizeFormula("\r=1+1")).isEqualTo("'\r=1+1");
+        assertThat(ReportExportGenerator.neutralizeFormula("\n=1+1")).isEqualTo("'\n=1+1");
+        assertThat(ReportExportGenerator.neutralizeFormula("\u0001=CMD('calc')")).isEqualTo("'\u0001=CMD('calc')");
+        assertThat(ReportExportGenerator.neutralizeFormula("\u00A0=1+1")).isEqualTo("'\u00A0=1+1");
+        assertThat(ReportExportGenerator.neutralizeFormula("\uFEFF+1")).isEqualTo("'\uFEFF+1");
         assertThat(ReportExportGenerator.neutralizeFormula("Safe value")).isEqualTo("Safe value");
 
         Report report = new Report();
@@ -122,6 +126,10 @@ class ReportExportGeneratorContentTest {
         metrics.put("spacePayload", "  =HYPERLINK(\"https://example.test\")");
         metrics.put("tabPayload", "\t=1+1");
         metrics.put("crPayload", "\r=1+1");
+        metrics.put("lfPayload", "\n=1+1");
+        metrics.put("ctrlPayload", "\u0001=CMD('calc')");
+        metrics.put("nbspPayload", "\u00A0=1+1");
+        metrics.put("bomPayload", "\uFEFF+1");
         metrics.put("cleanCount", 19);
 
         Map<String, Object> content = new LinkedHashMap<>();
@@ -139,6 +147,8 @@ class ReportExportGeneratorContentTest {
             }
         }
         assertThat(entries).containsKey("xl/worksheets/sheet1.xml");
+        String rawSheetXml = new String(entries.get("xl/worksheets/sheet1.xml"), StandardCharsets.UTF_8);
+        assertThat(rawSheetXml).contains("<t xml:space=\"preserve\">");
 
         Document doc = DocumentBuilderFactory.newInstance()
                 .newDocumentBuilder()
@@ -161,7 +171,12 @@ class ReportExportGeneratorContentTest {
                 "'@SUM(A1)",
                 "'  =HYPERLINK(\"https://example.test\")",
                 "'\t=1+1",
-                "'\r=1+1"
+                "'\n=1+1",
+                "' =CMD('calc')",
+                "'\u00A0=1+1",
+                "'\uFEFF+1"
         );
+        // Verify \r=1+1 neutralized (XML parsers normalize &#13; or retain leading apostrophe)
+        assertThat(cellTexts).anySatisfy(t -> assertThat(t).startsWith("'").endsWith("=1+1"));
     }
 }

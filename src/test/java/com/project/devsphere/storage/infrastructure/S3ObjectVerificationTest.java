@@ -19,6 +19,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.mock.env.MockEnvironment;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.SimpleTransactionStatus;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -175,12 +176,20 @@ class S3ObjectVerificationTest {
     }
 
     @Test
-    @DisplayName("SSRF validation blocks http and loopback when allowInsecureEndpoint=false")
+    @DisplayName("SSRF validation blocks http and loopback when allowInsecureEndpoint=false or prod profile active")
     void ssrfBlocksHttpAndLoopbackWhenStrict() {
         HttpPresignedObjectClient strictClient = new HttpPresignedObjectClient(props(false, true));
         assertThatThrownBy(() -> strictClient.verifyObjectExists("http://127.0.0.1:" + port + "/b/k"))
                 .isInstanceOf(StorageException.class);
         assertThatThrownBy(() -> strictClient.verifyObjectExists("https://localhost:9000/b/k"))
+                .isInstanceOf(StorageException.class);
+
+        MockEnvironment prodEnv = new MockEnvironment();
+        prodEnv.setActiveProfiles("prod");
+        HttpPresignedObjectClient prodClient = new HttpPresignedObjectClient(props(true, true), prodEnv);
+        assertThatThrownBy(() -> prodClient.verifyObjectExists("http://127.0.0.1:" + port + "/b/k"))
+                .isInstanceOf(StorageException.class);
+        assertThatThrownBy(() -> prodClient.uploadObject("https://localhost:9000/b/k", new byte[]{1}, "application/pdf"))
                 .isInstanceOf(StorageException.class);
     }
 
@@ -216,7 +225,7 @@ class S3ObjectVerificationTest {
         when(attachmentRepository.findByIdAndWorkspaceIdAndProjectId(attachmentId, workspaceId, projectId))
                 .thenReturn(Optional.of(attachment));
         String presignedHeadUrl = "http://127.0.0.1:" + port + "/devsphere-attachments/" + attachment.getStorageKey() + "?X-Amz-Expires=300";
-        when(storageProvider.generatePresignedDownloadUrl(attachment.getStorageKey(), 300L))
+        when(storageProvider.generatePresignedHeadUrl(attachment.getStorageKey(), 300L))
                 .thenReturn(presignedHeadUrl);
 
         // 1. Missing object -> 409 STORAGE_OBJECT_MISSING, never saved as CLEAN
@@ -227,6 +236,8 @@ class S3ObjectVerificationTest {
                     assertThat(se.getStatus()).isEqualTo(HttpStatus.CONFLICT);
                     assertThat(se.getCode()).isEqualTo("STORAGE_OBJECT_MISSING");
                 });
+        verify(storageProvider, times(1)).generatePresignedHeadUrl(attachment.getStorageKey(), 300L);
+        verify(storageProvider, never()).generatePresignedDownloadUrl(anyString(), anyLong());
         verify(attachmentRepository, never()).save(any());
         assertThat(attachment.getScanStatus()).isEqualTo(Attachment.ScanStatus.PENDING);
         verify(txManager, times(1)).getTransaction(any());
@@ -239,6 +250,8 @@ class S3ObjectVerificationTest {
         Attachment confirmed = service.confirmUpload(principal, workspaceId, projectId, attachmentId, Attachment.Visibility.CLIENT_SHARED);
         assertThat(confirmed.getScanStatus()).isEqualTo(Attachment.ScanStatus.CLEAN);
         assertThat(confirmed.getVisibility()).isEqualTo(Attachment.Visibility.CLIENT_SHARED);
+        verify(storageProvider, times(2)).generatePresignedHeadUrl(attachment.getStorageKey(), 300L);
+        verify(storageProvider, never()).generatePresignedDownloadUrl(anyString(), anyLong());
         verify(txManager, times(3)).getTransaction(any());
         verify(txManager, times(3)).commit(any());
     }

@@ -159,8 +159,8 @@ public final class ReportExportGenerator {
                     <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
                       <sheetData>
                         <row r="1">
-                          <c r="A1" t="inlineStr"><is><t>Attribute</t></is></c>
-                          <c r="B1" t="inlineStr"><is><t>Value</t></is></c>
+                          <c r="A1" t="inlineStr"><is><t xml:space="preserve">Attribute</t></is></c>
+                          <c r="B1" t="inlineStr"><is><t xml:space="preserve">Value</t></is></c>
                         </row>
                     """);
 
@@ -169,8 +169,8 @@ public final class ReportExportGenerator {
                 String cellA = formatSafeXmlCell(row.label());
                 String cellB = formatSafeXmlCell(row.value());
                 sheetXml.append("    <row r=\"").append(rowNumber).append("\">\n");
-                sheetXml.append("      <c r=\"A").append(rowNumber).append("\" t=\"inlineStr\"><is><t>").append(cellA).append("</t></is></c>\n");
-                sheetXml.append("      <c r=\"B").append(rowNumber).append("\" t=\"inlineStr\"><is><t>").append(cellB).append("</t></is></c>\n");
+                sheetXml.append("      <c r=\"A").append(rowNumber).append("\" t=\"inlineStr\"><is><t xml:space=\"preserve\">").append(cellA).append("</t></is></c>\n");
+                sheetXml.append("      <c r=\"B").append(rowNumber).append("\" t=\"inlineStr\"><is><t xml:space=\"preserve\">").append(cellB).append("</t></is></c>\n");
                 sheetXml.append("    </row>\n");
                 rowNumber++;
             }
@@ -189,15 +189,16 @@ public final class ReportExportGenerator {
     }
 
     /**
-     * CWE-1236 formula neutralization: prefixes any cell value (or leading-whitespace-stripped
-     * value) starting with {@code =}, {@code +}, {@code -}, {@code @}, {@code \t}, or {@code \r}
-     * with a single quote {@code '} before XML escaping.
+     * CWE-1236 formula neutralization: prefixes any cell value (or value after stripping leading
+     * whitespace, ISO control characters, BOM, and NBSP) starting with {@code =}, {@code +},
+     * {@code -}, {@code @}, {@code \t}, {@code \r}, or {@code \n} with a single quote {@code '}
+     * before XML escaping.
      */
     public static String neutralizeFormula(String value) {
         if (value == null || value.isEmpty()) {
             return "";
         }
-        if (startsWithFormulaTrigger(value) || startsWithFormulaTrigger(value.stripLeading())) {
+        if (startsWithFormulaTrigger(value) || startsWithFormulaTrigger(stripLeadingControlAndWhitespace(value))) {
             return "'" + value;
         }
         return value;
@@ -331,11 +332,24 @@ public final class ReportExportGenerator {
             return false;
         }
         char c = s.charAt(0);
-        return c == '=' || c == '+' || c == '-' || c == '@' || c == '\t' || c == '\r';
+        return c == '=' || c == '+' || c == '-' || c == '@' || c == '\t' || c == '\r' || c == '\n';
+    }
+
+    private static String stripLeadingControlAndWhitespace(String value) {
+        int i = 0;
+        while (i < value.length()) {
+            char c = value.charAt(i);
+            if (c <= 0x20 || Character.isWhitespace(c) || Character.isISOControl(c) || c == '\u00A0' || c == '\uFEFF') {
+                i++;
+            } else {
+                break;
+            }
+        }
+        return value.substring(i);
     }
 
     private static String formatSafeXmlCell(String raw) {
-        return escapeXml(sanitizeXmlChars(neutralizeFormula(raw)));
+        return escapeXml(neutralizeFormula(sanitizeXmlChars(raw)));
     }
 
     private static String sanitizeXmlChars(String text) {
