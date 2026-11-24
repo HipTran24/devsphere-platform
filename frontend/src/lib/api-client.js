@@ -475,3 +475,142 @@ export async function blockWorkItem(workspaceId, projectId, workItemId, { blocke
   });
 }
 
+// -----------------------------------------------------------------------------
+// Dependency Endpoints
+// -----------------------------------------------------------------------------
+
+export async function fetchDependencies(workspaceId, projectId) {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/projects/${projectId}/dependencies`);
+}
+
+export async function createDependency(workspaceId, projectId, { predecessorId, successorId, type = 'FINISH_TO_START', lagMinutes = 0 }) {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/projects/${projectId}/dependencies`, {
+    method: 'POST',
+    body: { predecessorId, successorId, type, lagMinutes },
+  });
+}
+
+export async function deleteDependency(workspaceId, projectId, dependencyId) {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/projects/${projectId}/dependencies/${dependencyId}`, {
+    method: 'DELETE',
+  });
+}
+
+// -----------------------------------------------------------------------------
+// Sprint Endpoints
+// -----------------------------------------------------------------------------
+
+export async function fetchSprints(workspaceId, projectId, { status } = {}) {
+  const query = status ? `?status=${encodeURIComponent(status)}` : '';
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/projects/${projectId}/sprints${query}`);
+}
+
+export async function getSprint(workspaceId, projectId, sprintId) {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/projects/${projectId}/sprints/${sprintId}`);
+}
+
+export async function createSprint(workspaceId, projectId, sprintData) {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/projects/${projectId}/sprints`, {
+    method: 'POST',
+    body: sprintData,
+  });
+}
+
+export async function startSprint(workspaceId, projectId, sprintId, data = {}) {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/projects/${projectId}/sprints/${sprintId}/start`, {
+    method: 'POST',
+    body: data,
+  });
+}
+
+export async function closeSprint(workspaceId, projectId, sprintId, data = {}) {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/projects/${projectId}/sprints/${sprintId}/close`, {
+    method: 'POST',
+    body: data,
+  });
+}
+
+export async function getSprintProgress(workspaceId, projectId, sprintId) {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/projects/${projectId}/sprints/${sprintId}/progress`);
+}
+
+export async function addSprintItems(workspaceId, projectId, sprintId, itemIds) {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/projects/${projectId}/sprints/${sprintId}/items`, {
+    method: 'POST',
+    body: { itemIds, action: 'ADD' },
+  });
+}
+
+export async function removeSprintItems(workspaceId, projectId, sprintId, itemIds) {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/projects/${projectId}/sprints/${sprintId}/items`, {
+    method: 'DELETE',
+    body: { itemIds, action: 'REMOVE' },
+  });
+}
+
+// -----------------------------------------------------------------------------
+// Quality Gate Endpoints
+// -----------------------------------------------------------------------------
+
+export async function fetchQualityGate(workspaceId, projectId, workItemId) {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/projects/${projectId}/work-items/${workItemId}/quality-gate`);
+}
+
+// -----------------------------------------------------------------------------
+// Plan Proposal Endpoints
+// -----------------------------------------------------------------------------
+
+export async function fetchPlanProposals(workspaceId, projectId) {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/projects/${projectId}/plan-proposals`);
+}
+
+export async function getPlanProposal(workspaceId, projectId, proposalId) {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/projects/${projectId}/plan-proposals/${proposalId}`);
+}
+
+export async function createPlanProposal(workspaceId, projectId, data) {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/projects/${projectId}/plan-proposals`, {
+    method: 'POST',
+    body: data,
+  });
+}
+
+export async function solvePlanProposal(workspaceId, projectId, proposalId, options = {}) {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/projects/${projectId}/plan-proposals/${proposalId}/solve`, {
+    method: 'POST',
+    body: options,
+  });
+}
+
+export async function previewPlanProposal(workspaceId, projectId, proposalId) {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/projects/${projectId}/plan-proposals/${proposalId}/preview`);
+}
+
+export async function getPlanProposalDiagnostics(workspaceId, projectId, proposalId) {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/projects/${projectId}/plan-proposals/${proposalId}/diagnostics`);
+}
+
+export async function approvePlanProposal(workspaceId, projectId, proposalId, { notes } = {}) {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/projects/${projectId}/plan-proposals/${proposalId}/approve`, {
+    method: 'POST',
+    body: { notes },
+  });
+}
+
+export async function getDeadlineConsent(workspaceId, projectId, proposalId) {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/projects/${projectId}/plan-proposals/${proposalId}/deadline-consent`);
+}
+
+export async function confirmDeadline(workspaceId, projectId, proposalId, { rationale, acknowledgedDelayDays = 0, confirmedByRole = 'PM' } = {}) {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/projects/${projectId}/plan-proposals/${proposalId}/deadline-confirmation`, {
+    method: 'POST',
+    body: { rationale, acknowledgedDelayDays, confirmedByRole },
+  });
+}
+
+export async function applyPlanProposal(workspaceId, projectId, proposalId, { applyMode = 'ALL' } = {}) {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/projects/${projectId}/plan-proposals/${proposalId}/apply`, {
+    method: 'POST',
+    body: { applyMode },
+  });
+}
