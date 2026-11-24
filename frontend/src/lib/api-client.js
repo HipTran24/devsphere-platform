@@ -256,3 +256,62 @@ async function performSilentRefresh() {
   }
 }
 
+// -----------------------------------------------------------------------------
+// Authentication Endpoints
+// -----------------------------------------------------------------------------
+
+export async function login({ email, password }) {
+  const csrf = await fetchCsrfToken();
+  const url = `${getBaseUrl()}/api/v1/auth/login`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+      [csrf.headerName || 'X-CSRF-TOKEN']: csrf.token || '',
+    },
+    credentials: 'include',
+    body: JSON.stringify({ email, password }),
+  });
+
+  if (!res.ok) {
+    const problem = await parseProblemDetail(res);
+    throw new ApiClientError(problem.detail || 'Sign-in failed', {
+      status: res.status,
+      code: problem.code || 'AUTH_INVALID',
+      detail: problem.detail,
+    });
+  }
+
+  const data = await res.json();
+  setAccessToken(data.accessToken, data.expiresAt);
+  return data;
+}
+
+export async function refreshSession() {
+  const success = await performSilentRefresh();
+  if (!success) {
+    throw new ApiClientError('Failed to refresh session', {
+      status: 401,
+      code: 'REFRESH_FAILED',
+    });
+  }
+  return {
+    accessToken: inMemoryAccessToken,
+    expiresAt: tokenExpiresAt,
+  };
+}
+
+export async function logout() {
+  try {
+    await apiFetch('/api/v1/auth/logout', { method: 'POST' });
+  } finally {
+    clearAccessToken();
+    clearCsrfCache();
+  }
+}
+
+export async function fetchCurrentUser() {
+  return apiFetch('/api/v1/auth/me', { method: 'GET' });
+}
+
