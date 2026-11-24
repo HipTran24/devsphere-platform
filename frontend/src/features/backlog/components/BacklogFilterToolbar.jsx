@@ -32,6 +32,13 @@ export default function BacklogFilterToolbar({
             placeholder="Search work items by key or title..."
             value={filters.search || ""}
             onChange={(e) => onFilterChange("search", e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape" && filters.search) {
+                e.preventDefault();
+                e.stopPropagation();
+                onFilterChange("search", "");
+              }
+            }}
             aria-label="Search work items"
           />
           {filters.search && (
