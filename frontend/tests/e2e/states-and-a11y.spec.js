@@ -18,15 +18,14 @@ test("skip link moves keyboard focus directly to #main-content", async ({ page }
     await expect(skipLink).toBeVisible();
 
     await page.keyboard.press("Enter");
-    const focusedId = await page.evaluate(() => document.activeElement?.id);
-    expect(focusedId).toBe("main-content");
+    await expect(page.locator("#main-content")).toBeFocused();
 
     await page.goto("/workspace-home");
+    await page.waitForLoadState("domcontentloaded");
     await page.keyboard.press("Tab");
     await expect(skipLink).toBeFocused();
     await page.keyboard.press("Enter");
-    const homeMainId = await page.evaluate(() => document.activeElement?.id);
-    expect(homeMainId).toBe("main-content");
+    await expect(page.locator("#main-content")).toBeFocused();
 });
 
 test("pure keyboard login reaches /workspaces empty state, traps dialog focus, and restores focus on Escape", async ({ page }) => {
