@@ -39,7 +39,7 @@ test.describe('Gantt Timeline & Plan Approval UI', () => {
     await expect(page.getByText('M1: Security & Proxy Baseline')).toBeVisible();
 
     // Verify Sprints track
-    await expect(page.getByText('Sprints', { exact: true })).toBeVisible();
+    await expect(page.locator('div[aria-label="Sprint Boundaries"]')).toBeVisible();
     await expect(page.getByText('Sprint 1: Foundations & Core Engine')).toBeVisible();
   });
 
@@ -145,7 +145,7 @@ test.describe('Gantt Timeline & Plan Approval UI', () => {
     await expect(page.getByText('Proposed Tasks')).toBeVisible();
     await expect(page.getByText('Total Duration')).toBeVisible();
     await expect(page.getByText('Forecast Finish')).toBeVisible();
-    await expect(page.getByText('Committed Deadline')).toBeVisible();
+    await expect(page.getByText('Committed Deadline', { exact: true })).toBeVisible();
 
     // Schedule Diff Table
     await expect(page.getByRole('heading', { name: /Work Item Schedule Comparison/ })).toBeVisible();
@@ -267,7 +267,7 @@ test.describe('Gantt Timeline & Plan Approval UI', () => {
     // Click Backlog tab
     await page.getByRole('tab', { name: 'Backlog' }).click();
     await expect(page).toHaveURL(/\/p\/DSP\/backlog/);
-    await expect(page.getByRole('heading', { name: 'Backlog & Requirements Tree' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Backlog & Requirements Hierarchy' })).toBeVisible();
 
     // Return to Gantt tab
     await page.getByRole('tab', { name: 'Gantt' }).click();
