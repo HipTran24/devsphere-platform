@@ -519,6 +519,77 @@ public class GitHubLiveSyncAndWebhookIntegrationTest {
         assertThat(result.details().get("remoteSyncStatus")).isEqualTo("DEGRADED");
     }
 
+    @Test
+    @DisplayName("PostgreSQL code_reviews trigger rejection rolls back SAVEPOINT cleanly so github_events still transitions to DONE without 25P02")
+    void codeReviewTriggerRejection_rollsBackSavepointWithoutPoisoningOuterTx() throws Exception {
+        Fixture f = createFixture();
+        OffsetDateTime olderTime = OffsetDateTime.now(ZoneOffset.UTC).minusMinutes(10);
+        OffsetDateTime newerTime = OffsetDateTime.now(ZoneOffset.UTC).minusMinutes(1);
+
+        // Older PR #77 activity row attributed to dev-peer, newer PR #77 row attributed to dev-author.
+        // Java pre-check inspects latest row (dev-author != dev-peer) and attempts INSERT into code_reviews;
+        // PostgreSQL V006 trigger ds_review_evidence scans ALL PULL_REQUEST rows for PR #77 and raises 23514.
+        jdbc.update(
+                """
+                INSERT INTO github_activities (
+                    id, project_id, repository_id, work_item_id, kind, github_object_id,
+                    pr_number, pr_head_sha, actor_login, state, title, payload,
+                    happened_at, synced_at, created_at, updated_at, version
+                ) VALUES (
+                    gen_random_uuid(), ?, ?, ?, 'PULL_REQUEST', '77-historical',
+                    77, ?, 'dev-peer', 'OPEN', 'Historical PR row', '{}'::jsonb,
+                    ?, now(), now(), now(), 0
+                )
+                """,
+                f.projectId, f.repositoryId, f.workItemId, SHA_CURRENT, olderTime
+        );
+        jdbc.update(
+                """
+                INSERT INTO github_activities (
+                    id, project_id, repository_id, work_item_id, kind, github_object_id,
+                    pr_number, pr_head_sha, actor_login, state, title, payload,
+                    happened_at, synced_at, created_at, updated_at, version
+                ) VALUES (
+                    gen_random_uuid(), ?, ?, ?, 'PULL_REQUEST', '77',
+                    77, ?, 'dev-author', 'OPEN', 'Current PR row', '{}'::jsonb,
+                    ?, now(), now(), now(), 0
+                )
+                """,
+                f.projectId, f.repositoryId, f.workItemId, SHA_CURRENT, newerTime
+        );
+
+        String deliveryId = "del-trigger-savepoint-77";
+        sendSignedWebhook(deliveryId, "pull_request_review", Map.of(
+                "action", "submitted",
+                "repository", Map.of("id", f.githubRepoId),
+                "pull_request", Map.of(
+                        "number", 77,
+                        "user", Map.of("login", "dev-author"),
+                        "head", Map.of("sha", SHA_CURRENT)
+                ),
+                "review", Map.of(
+                        "id", 97701L,
+                        "state", "approved",
+                        "commit_id", SHA_CURRENT,
+                        "body", "Triggers ds_review_evidence 23514",
+                        "user", Map.of("login", "dev-peer")
+                )
+        ));
+
+        // Verify SAVEPOINT rollback prevented 25P02 and outer transaction completed cleanly
+        Map<String, Object> eventRow = jdbc.queryForMap(
+                "SELECT process_status, processed_at FROM github_events WHERE delivery_id = ?", deliveryId);
+        assertThat(eventRow.get("process_status")).isEqualTo("DONE");
+        assertThat(eventRow.get("processed_at")).isNotNull();
+
+        assertThat(jdbc.queryForObject(
+                "SELECT count(*) FROM code_reviews WHERE repository_id = ? AND pr_number = 77",
+                Integer.class, f.repositoryId)).isEqualTo(0);
+        assertThat(jdbc.queryForObject(
+                "SELECT count(*) FROM github_activities WHERE repository_id = ? AND pr_number = 77 AND kind = 'HUMAN_REVIEW'",
+                Integer.class, f.repositoryId)).isEqualTo(0);
+    }
+
     private void sendSignedWebhook(String deliveryId, String eventType, Map<String, Object> payload) throws Exception {
         byte[] body = json.writeValueAsBytes(payload);
         String signature = computeHmac(body, WEBHOOK_SECRET);

@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
@@ -40,6 +41,7 @@ public class GitHubInstallationTokenService {
     private final GitHubAppJwtSigner jwtSigner;
     private final ObjectMapper objectMapper;
     private final Clock clock;
+    private final Environment environment;
     private final HttpClient httpClient;
 
     private final ConcurrentHashMap<Long, CachedToken> tokenCache = new ConcurrentHashMap<>();
@@ -49,8 +51,16 @@ public class GitHubInstallationTokenService {
     public GitHubInstallationTokenService(
             GitHubAppProperties properties,
             GitHubAppJwtSigner jwtSigner,
-            @Autowired(required = false) ObjectMapper objectMapper) {
-        this(properties, jwtSigner, objectMapper, Clock.systemUTC());
+            @Autowired(required = false) ObjectMapper objectMapper,
+            @Autowired(required = false) Environment environment) {
+        this(properties, jwtSigner, objectMapper, Clock.systemUTC(), environment);
+    }
+
+    public GitHubInstallationTokenService(
+            GitHubAppProperties properties,
+            GitHubAppJwtSigner jwtSigner,
+            ObjectMapper objectMapper) {
+        this(properties, jwtSigner, objectMapper, Clock.systemUTC(), null);
     }
 
     public GitHubInstallationTokenService(
@@ -58,10 +68,20 @@ public class GitHubInstallationTokenService {
             GitHubAppJwtSigner jwtSigner,
             ObjectMapper objectMapper,
             Clock clock) {
+        this(properties, jwtSigner, objectMapper, clock, null);
+    }
+
+    public GitHubInstallationTokenService(
+            GitHubAppProperties properties,
+            GitHubAppJwtSigner jwtSigner,
+            ObjectMapper objectMapper,
+            Clock clock,
+            Environment environment) {
         this.properties = Objects.requireNonNull(properties, "properties must not be null");
         this.jwtSigner = Objects.requireNonNull(jwtSigner, "jwtSigner must not be null");
         this.objectMapper = objectMapper != null ? objectMapper : new ObjectMapper().findAndRegisterModules();
         this.clock = Objects.requireNonNull(clock, "clock must not be null");
+        this.environment = environment;
         long connectMs = Math.max(500L, properties.getConnectTimeoutMs());
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofMillis(connectMs))
@@ -117,7 +137,8 @@ public class GitHubInstallationTokenService {
     }
 
     private CachedToken requestNewInstallationToken(long installationId) {
-        URI baseUri = GitHubRestClient.validateApiBaseUrl(properties.getApiBaseUrl(), properties.isAllowLoopbackApi());
+        boolean effectiveAllowLoopback = GitHubRestClient.isEffectiveAllowLoopbackApi(properties, environment);
+        URI baseUri = GitHubRestClient.validateApiBaseUrl(properties.getApiBaseUrl(), effectiveAllowLoopback);
         String base = baseUri.toString();
         URI tokenUri = URI.create(base + "/app/installations/" + installationId + "/access_tokens");
 

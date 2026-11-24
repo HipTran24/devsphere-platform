@@ -12,12 +12,16 @@ import com.project.devsphere.identity.application.SessionService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.jdbc.core.ConnectionCallback;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.sql.PreparedStatement;
+import java.sql.SQLException;
+import java.sql.Savepoint;
 import java.sql.Timestamp;
+import java.sql.Types;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -535,61 +539,24 @@ public class GitHubActivitySyncService {
         }
         String gateSnapshotJson = toSafeJson(gateSnapshot, "{\"schemaVersion\":1}");
 
-        // 6. Idempotent upsert into code_reviews
+        // 6. Idempotent upsert into code_reviews guarded by a JDBC SAVEPOINT so PostgreSQL
+        //    integrity/trigger rejections (SQLState 23xxx) never abort the outer transaction (25P02).
         UUID existingReviewId = findExistingHumanReviewId(repositoryId, prNumber, reviewCommitSha, reviewerId, githubReviewId);
-        try {
-            if (existingReviewId != null) {
-                jdbcTemplate.update(
-                        """
-                        UPDATE code_reviews
-                        SET work_item_id = COALESCE(?, work_item_id),
-                            head_sha = ?,
-                            context_version = ?,
-                            status = ?,
-                            summary = ?,
-                            gate_snapshot = ?::jsonb,
-                            completed_at = ?,
-                            updated_at = now(),
-                            version = version + 1
-                        WHERE id = ?
-                        """,
-                        workItemId,
-                        reviewCommitSha,
-                        contextVersion,
-                        mappedStatus.name(),
-                        reviewBody,
-                        gateSnapshotJson,
-                        Timestamp.from(submittedAt),
-                        existingReviewId
-                );
-            } else {
-                jdbcTemplate.update(
-                        """
-                        INSERT INTO code_reviews (
-                            id, project_id, repository_id, work_item_id, pr_number, head_sha,
-                            context_version, scope, reviewer_kind, findings, summary, status,
-                            gate_snapshot, reviewer_id, completed_at, created_at, updated_at, version
-                        ) VALUES (
-                            gen_random_uuid(), ?, ?, ?, ?, ?,
-                            ?, 'PR', 'HUMAN', '[]'::jsonb, ?, ?,
-                            ?::jsonb, ?, ?, now(), now(), 0
-                        )
-                        """,
-                        projectId,
-                        repositoryId,
-                        workItemId,
-                        prNumber,
-                        reviewCommitSha,
-                        contextVersion,
-                        reviewBody,
-                        mappedStatus.name(),
-                        gateSnapshotJson,
-                        reviewerId,
-                        Timestamp.from(submittedAt)
-                );
-            }
-        } catch (DataIntegrityViolationException ex) {
-            log.warn("Code review rejected by database integrity guard on PR #{}: {}", prNumber, ex.getMessage());
+        boolean reviewPersisted = upsertHumanCodeReviewWithSavepoint(
+                existingReviewId,
+                projectId,
+                repositoryId,
+                workItemId,
+                prNumber,
+                reviewCommitSha,
+                contextVersion,
+                reviewBody,
+                mappedStatus,
+                gateSnapshotJson,
+                reviewerId,
+                submittedAt
+        );
+        if (!reviewPersisted) {
             return false;
         }
 
@@ -926,6 +893,104 @@ public class GitHubActivitySyncService {
                 startedAt != null ? Timestamp.from(startedAt) : null,
                 effectiveCompletedAt != null ? Timestamp.from(effectiveCompletedAt) : null
         );
+    }
+
+    private boolean upsertHumanCodeReviewWithSavepoint(
+            UUID existingReviewId,
+            UUID projectId,
+            UUID repositoryId,
+            UUID workItemId,
+            int prNumber,
+            String reviewCommitSha,
+            long contextVersion,
+            String reviewBody,
+            CodeReview.Status mappedStatus,
+            String gateSnapshotJson,
+            UUID reviewerId,
+            Instant submittedAt) {
+        Boolean persisted = jdbcTemplate.execute((ConnectionCallback<Boolean>) con -> {
+            Savepoint sp = null;
+            if (!con.getAutoCommit()) {
+                sp = con.setSavepoint("ds_code_review_upsert");
+            }
+            try {
+                if (existingReviewId != null) {
+                    try (PreparedStatement ps = con.prepareStatement("""
+                            UPDATE code_reviews
+                            SET work_item_id = COALESCE(?, work_item_id),
+                                head_sha = ?,
+                                context_version = ?,
+                                status = ?,
+                                summary = ?,
+                                gate_snapshot = ?::jsonb,
+                                completed_at = ?,
+                                updated_at = now(),
+                                version = version + 1
+                            WHERE id = ?
+                            """)) {
+                        ps.setObject(1, workItemId, Types.OTHER);
+                        ps.setString(2, reviewCommitSha);
+                        ps.setLong(3, contextVersion);
+                        ps.setString(4, mappedStatus.name());
+                        if (reviewBody != null) {
+                            ps.setString(5, reviewBody);
+                        } else {
+                            ps.setNull(5, Types.VARCHAR);
+                        }
+                        ps.setString(6, gateSnapshotJson);
+                        ps.setTimestamp(7, Timestamp.from(submittedAt));
+                        ps.setObject(8, existingReviewId, Types.OTHER);
+                        ps.executeUpdate();
+                    }
+                } else {
+                    try (PreparedStatement ps = con.prepareStatement("""
+                            INSERT INTO code_reviews (
+                                id, project_id, repository_id, work_item_id, pr_number, head_sha,
+                                context_version, scope, reviewer_kind, findings, summary, status,
+                                gate_snapshot, reviewer_id, completed_at, created_at, updated_at, version
+                            ) VALUES (
+                                gen_random_uuid(), ?, ?, ?, ?, ?,
+                                ?, 'PR', 'HUMAN', '[]'::jsonb, ?, ?,
+                                ?::jsonb, ?, ?, now(), now(), 0
+                            )
+                            """)) {
+                        ps.setObject(1, projectId, Types.OTHER);
+                        ps.setObject(2, repositoryId, Types.OTHER);
+                        ps.setObject(3, workItemId, Types.OTHER);
+                        ps.setInt(4, prNumber);
+                        ps.setString(5, reviewCommitSha);
+                        ps.setLong(6, contextVersion);
+                        if (reviewBody != null) {
+                            ps.setString(7, reviewBody);
+                        } else {
+                            ps.setNull(7, Types.VARCHAR);
+                        }
+                        ps.setString(8, mappedStatus.name());
+                        ps.setString(9, gateSnapshotJson);
+                        ps.setObject(10, reviewerId, Types.OTHER);
+                        ps.setTimestamp(11, Timestamp.from(submittedAt));
+                        ps.executeUpdate();
+                    }
+                }
+                if (sp != null) {
+                    con.releaseSavepoint(sp);
+                }
+                return Boolean.TRUE;
+            } catch (SQLException ex) {
+                String sqlState = ex.getSQLState();
+                if (sqlState != null && sqlState.startsWith("23")) {
+                    if (sp != null) {
+                        con.rollback(sp);
+                        con.releaseSavepoint(sp);
+                    }
+                    log.warn("Code review rejected by database integrity guard on PR #{} (SQLState={}): {}",
+                            prNumber, sqlState, ex.getMessage());
+                    return Boolean.FALSE;
+                }
+                throw ex;
+            }
+        });
+        return Boolean.TRUE.equals(persisted);
     }
 
     private UUID findExistingHumanReviewId(

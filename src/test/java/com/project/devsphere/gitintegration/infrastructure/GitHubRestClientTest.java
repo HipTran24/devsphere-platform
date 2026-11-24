@@ -6,8 +6,10 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.mock.env.MockEnvironment;
 
 import java.io.OutputStream;
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
@@ -258,5 +260,61 @@ class GitHubRestClientTest {
         assertThatThrownBy(() -> client.listPullRequests(100L, "acme", "devsphere"))
                 .isInstanceOf(GitHubApiUnavailableException.class)
                 .hasMessageContaining("503");
+    }
+
+    @Test
+    @DisplayName("Rejects loopback API URL when prod profile is active even if allowLoopbackApi=true")
+    void prodProfile_forbidsLoopbackApiEvenWhenConfiguredTrue() {
+        GitHubAppProperties props = new GitHubAppProperties();
+        props.setEnabled(true);
+        props.setAppId("321");
+        props.setPrivateKeyPem(pkcs8Pem);
+        props.setApiBaseUrl("http://127.0.0.1:" + server.getAddress().getPort());
+        props.setAllowLoopbackApi(true);
+
+        MockEnvironment prodEnv = new MockEnvironment();
+        prodEnv.setActiveProfiles("prod");
+        Clock clock = Clock.systemUTC();
+        GitHubAppJwtSigner signer = new GitHubAppJwtSigner(props, clock);
+        GitHubInstallationTokenService tokenService =
+                new GitHubInstallationTokenService(props, signer, null, clock, prodEnv);
+        GitHubRestClient prodClient = new GitHubRestClient(props, tokenService, null, clock, prodEnv);
+
+        assertThatThrownBy(() -> prodClient.listPullRequests(100L, "acme", "devsphere"))
+                .isInstanceOf(GitHubApiUnavailableException.class)
+                .hasMessageContaining("loopback");
+        assertThat(tokenCalls.get()).isEqualTo(0);
+        assertThat(prCalls.get()).isEqualTo(0);
+    }
+
+    @Test
+    @DisplayName("DNS resolution SSRF check blocks hostnames resolving to metadata, link-local, multicast, unspecified, private, or loopback IPs")
+    void validateApiBaseUrl_blocksForbiddenDnsResolutions() throws Exception {
+        List<String> forbiddenResolvedIps = List.of(
+                "169.254.169.254",
+                "169.254.170.2",
+                "100.100.100.200",
+                "fd00:ec2::254",
+                "169.254.10.20",
+                "224.0.0.1",
+                "0.0.0.0",
+                "10.0.0.8",
+                "192.168.1.50",
+                "127.0.0.1"
+        );
+
+        for (String ip : forbiddenResolvedIps) {
+            InetAddress resolved = InetAddress.getByName(ip);
+            assertThatThrownBy(() -> GitHubRestClient.validateApiBaseUrl(
+                    "https://rebind.example.test", false, host -> new InetAddress[]{resolved}))
+                    .as("Expected DNS SSRF rejection when hostname resolves to %s", ip)
+                    .isInstanceOf(GitHubApiUnavailableException.class);
+        }
+
+        // Public IP passes cleanly
+        InetAddress publicGithubIp = InetAddress.getByName("140.82.114.6");
+        URI valid = GitHubRestClient.validateApiBaseUrl(
+                "https://api.github.com", false, host -> new InetAddress[]{publicGithubIp});
+        assertThat(valid.toString()).isEqualTo("https://api.github.com");
     }
 }

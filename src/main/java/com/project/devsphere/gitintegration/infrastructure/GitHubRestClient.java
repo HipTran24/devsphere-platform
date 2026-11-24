@@ -5,6 +5,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.env.Environment;
+import org.springframework.core.env.Profiles;
 import org.springframework.stereotype.Component;
 
 import java.io.ByteArrayOutputStream;
@@ -49,6 +51,7 @@ public class GitHubRestClient {
     public static final String USER_AGENT = "DevSphere-GitHub-App";
 
     private static final int MAX_RESPONSE_BYTES = 4 * 1024 * 1024; // 4 MB
+    private static final int MAX_DRAIN_BYTES = 64 * 1024; // 64 KB
     private static final Pattern IPV4_LITERAL = Pattern.compile("^\\d{1,3}(\\.\\d{1,3}){3}$");
     private static final Pattern NON_CANONICAL_NUMERIC_HOST = Pattern.compile(
             "^(?:\\d+|0x[0-9a-f]+|(?:0[0-7]+|0x[0-9a-f]+|\\d+)(?:\\.(?:0[0-7]+|0x[0-9a-f]+|\\d+)){1,3})$"
@@ -73,14 +76,23 @@ public class GitHubRestClient {
     private final GitHubInstallationTokenService tokenService;
     private final ObjectMapper objectMapper;
     private final Clock clock;
+    private final Environment environment;
     private final HttpClient httpClient;
 
     @Autowired
     public GitHubRestClient(
             GitHubAppProperties properties,
             GitHubInstallationTokenService tokenService,
-            @Autowired(required = false) ObjectMapper objectMapper) {
-        this(properties, tokenService, objectMapper, Clock.systemUTC());
+            @Autowired(required = false) ObjectMapper objectMapper,
+            @Autowired(required = false) Environment environment) {
+        this(properties, tokenService, objectMapper, Clock.systemUTC(), environment);
+    }
+
+    public GitHubRestClient(
+            GitHubAppProperties properties,
+            GitHubInstallationTokenService tokenService,
+            ObjectMapper objectMapper) {
+        this(properties, tokenService, objectMapper, Clock.systemUTC(), null);
     }
 
     public GitHubRestClient(
@@ -88,15 +100,33 @@ public class GitHubRestClient {
             GitHubInstallationTokenService tokenService,
             ObjectMapper objectMapper,
             Clock clock) {
+        this(properties, tokenService, objectMapper, clock, null);
+    }
+
+    public GitHubRestClient(
+            GitHubAppProperties properties,
+            GitHubInstallationTokenService tokenService,
+            ObjectMapper objectMapper,
+            Clock clock,
+            Environment environment) {
         this.properties = Objects.requireNonNull(properties, "properties must not be null");
         this.tokenService = Objects.requireNonNull(tokenService, "tokenService must not be null");
         this.objectMapper = objectMapper != null ? objectMapper : new ObjectMapper().findAndRegisterModules();
         this.clock = Objects.requireNonNull(clock, "clock must not be null");
+        this.environment = environment;
         long connectMs = Math.max(500L, properties.getConnectTimeoutMs());
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofMillis(connectMs))
                 .followRedirects(HttpClient.Redirect.NEVER)
                 .build();
+    }
+
+    static boolean isEffectiveAllowLoopbackApi(GitHubAppProperties properties, Environment environment) {
+        return properties != null && properties.isAllowLoopbackApi() && !isProdProfile(environment);
+    }
+
+    static boolean isProdProfile(Environment environment) {
+        return environment != null && environment.acceptsProfiles(Profiles.of("prod"));
     }
 
     /**
@@ -163,17 +193,28 @@ public class GitHubRestClient {
         return getJsonList(installationId, path);
     }
 
+    @FunctionalInterface
+    interface DnsResolver {
+        InetAddress[] resolveAll(String host) throws UnknownHostException;
+    }
+
     /**
-     * SSRF-validates the configured GitHub API base URL.
+     * SSRF-validates the configured GitHub API base URL (including DNS resolution checks for hostnames).
      *
      * <ul>
      *   <li>Rejects userinfo, query parameters, fragments, and invalid ports/hosts.</li>
      *   <li>Always rejects cloud metadata IPs/hostnames, link-local, multicast, and unspecified addresses.</li>
+     *   <li>Resolves non-IP hostnames via {@link InetAddress#getAllByName(String)} and validates every
+     *       resolved address against SSRF rules.</li>
      *   <li>Requires {@code https} unless {@code allowLoopbackApi=true} and the host is loopback
      *       ({@code localhost}, {@code 127.0.0.1}, {@code ::1}).</li>
      * </ul>
      */
     public static URI validateApiBaseUrl(String rawBaseUrl, boolean allowLoopbackApi) {
+        return validateApiBaseUrl(rawBaseUrl, allowLoopbackApi, InetAddress::getAllByName);
+    }
+
+    static URI validateApiBaseUrl(String rawBaseUrl, boolean allowLoopbackApi, DnsResolver dnsResolver) {
         if (rawBaseUrl == null || rawBaseUrl.isBlank()) {
             throw new GitHubApiUnavailableException("GitHub apiBaseUrl must not be blank");
         }
@@ -227,8 +268,20 @@ public class GitHubRestClient {
             }
             validateAddress(address, allowLoopbackApi);
             loopbackHost = address.isLoopbackAddress();
-        } else if (loopbackHost && !allowLoopbackApi) {
-            throw new GitHubApiUnavailableException("GitHub apiBaseUrl loopback host is not permitted");
+        } else {
+            if (loopbackHost && !allowLoopbackApi) {
+                throw new GitHubApiUnavailableException("GitHub apiBaseUrl loopback host is not permitted");
+            }
+            try {
+                InetAddress[] resolvedAddresses = dnsResolver.resolveAll(normalized);
+                if (resolvedAddresses != null) {
+                    for (InetAddress resolved : resolvedAddresses) {
+                        validateAddress(resolved, allowLoopbackApi);
+                    }
+                }
+            } catch (UnknownHostException ignored) {
+                // Defer unreachable/offline DNS failures to HTTP transport -> 503 GITHUB_API_UNAVAILABLE.
+            }
         }
 
         String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase(Locale.ROOT);
@@ -254,7 +307,8 @@ public class GitHubRestClient {
         if (!properties.isEnabled()) {
             throw new GitHubApiUnavailableException("GitHub App integration is disabled");
         }
-        URI baseUri = validateApiBaseUrl(properties.getApiBaseUrl(), properties.isAllowLoopbackApi());
+        boolean effectiveAllowLoopback = isEffectiveAllowLoopbackApi(properties, environment);
+        URI baseUri = validateApiBaseUrl(properties.getApiBaseUrl(), effectiveAllowLoopback);
         URI targetUri = URI.create(baseUri.toString() + pathAndQuery);
 
         String token = tokenService.getInstallationToken(installationId);
@@ -390,8 +444,17 @@ public class GitHubRestClient {
 
     private static void drainQuietly(HttpResponse<InputStream> response) {
         try (InputStream in = response.body()) {
-            if (in != null) {
-                in.transferTo(java.io.OutputStream.nullOutputStream());
+            if (in == null) {
+                return;
+            }
+            byte[] buffer = new byte[4096];
+            int remaining = MAX_DRAIN_BYTES;
+            while (remaining > 0) {
+                int read = in.read(buffer, 0, Math.min(buffer.length, remaining));
+                if (read == -1) {
+                    break;
+                }
+                remaining -= read;
             }
         } catch (IOException ignored) {
         }

@@ -6,6 +6,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.mock.env.MockEnvironment;
 
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
@@ -198,6 +199,28 @@ class GitHubInstallationTokenServiceTest {
         assertThatThrownBy(() -> enabled.getInstallationToken(5001L))
                 .isInstanceOf(GitHubApiUnavailableException.class)
                 .hasMessageContaining("503");
+    }
+
+    @Test
+    @DisplayName("Rejects loopback API URL when prod profile is active even if allowLoopbackApi=true")
+    void prodProfile_forbidsLoopbackApiEvenWhenConfiguredTrue() {
+        GitHubAppProperties props = new GitHubAppProperties();
+        props.setEnabled(true);
+        props.setAppId("777001");
+        props.setPrivateKeyPem(pkcs8Pem);
+        props.setApiBaseUrl("http://127.0.0.1:" + server.getAddress().getPort());
+        props.setAllowLoopbackApi(true);
+
+        MockEnvironment prodEnv = new MockEnvironment();
+        prodEnv.setActiveProfiles("prod");
+        GitHubAppJwtSigner signer = new GitHubAppJwtSigner(props, mutableClock);
+        GitHubInstallationTokenService prodService =
+                new GitHubInstallationTokenService(props, signer, null, mutableClock, prodEnv);
+
+        assertThatThrownBy(() -> prodService.getInstallationToken(5001L))
+                .isInstanceOf(GitHubApiUnavailableException.class)
+                .hasMessageContaining("loopback");
+        assertThat(exchangeCalls.get()).isEqualTo(0);
     }
 
     private static final class MutableClock extends Clock {
