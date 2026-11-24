@@ -52,4 +52,12 @@ public class StorageException extends RuntimeException {
     public static StorageException validationFailed(String message) {
         return new StorageException(HttpStatus.BAD_REQUEST, "VALIDATION_FAILED", message);
     }
+
+    public static StorageException storageObjectMissing(String message) {
+        return new StorageException(HttpStatus.CONFLICT, "STORAGE_OBJECT_MISSING", message);
+    }
+
+    public static StorageException storageUnavailable(String message) {
+        return new StorageException(HttpStatus.SERVICE_UNAVAILABLE, "STORAGE_UNAVAILABLE", message);
+    }
 }
