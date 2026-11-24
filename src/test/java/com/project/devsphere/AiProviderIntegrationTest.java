@@ -642,6 +642,18 @@ class AiProviderIntegrationTest {
         );
         assertThat(failingRes.statusCode()).isEqualTo(503);
         assertThat(jsonMapper.readTree(failingRes.body()).get("code").asText()).isEqualTo("AI_UNAVAILABLE");
+
+        // NOTE-3: Guard AiJob.Status.RUNNING against concurrent duplicate execution -> 409 AI_JOB_ALREADY_RUNNING
+        UUID runningJobId = createAiJobViaApi(f, "REQUIREMENT_PLAN", Map.of("schemaVersion", 1));
+        jdbc.update("UPDATE ai_jobs SET status = 'RUNNING' WHERE id = ?", runningJobId);
+        HttpResponse<String> runningRes = sendJson(
+                "POST",
+                "/api/v1/workspaces/" + f.workspaceId() + "/projects/" + f.projectId() + "/ai/jobs/" + runningJobId + "/execute",
+                f.memberToken(),
+                null
+        );
+        assertThat(runningRes.statusCode()).isEqualTo(409);
+        assertThat(jsonMapper.readTree(runningRes.body()).get("code").asText()).isEqualTo("AI_JOB_ALREADY_RUNNING");
     }
 
     @Test

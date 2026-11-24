@@ -4,6 +4,8 @@ import com.project.devsphere.ai.infrastructure.AiProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.env.Environment;
+import org.springframework.core.env.Profiles;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 
@@ -22,6 +24,9 @@ import java.util.Objects;
 /**
  * AES-256-GCM cipher for encrypting workspace AI provider credentials prior to JSONB persistence
  * under {@code "encryptedCredential"} (complying with the {@code V006} {@code ds_json_has_secret} guard).
+ *
+ * <p>Requires an explicit 32-byte Base64 {@code devsphere.ai.encryption-key} whenever the {@code prod}
+ * Spring profile is active; derives a deterministic dev/test fallback key only outside {@code prod}.</p>
  */
 @Component
 public class AiSecretCipher {
@@ -38,14 +43,28 @@ public class AiSecretCipher {
     private final SecretKey secretKey;
     private final SecureRandom secureRandom = new SecureRandom();
 
-    @Autowired
     public AiSecretCipher(AiProperties aiProperties) {
-        this(Objects.requireNonNull(aiProperties, "aiProperties must not be null").getEncryptionKey());
+        this(aiProperties, null);
+    }
+
+    @Autowired
+    public AiSecretCipher(AiProperties aiProperties, Environment environment) {
+        this(
+                Objects.requireNonNull(aiProperties, "aiProperties must not be null").getEncryptionKey(),
+                isProdProfile(environment)
+        );
     }
 
     public AiSecretCipher(String configuredBase64Key) {
+        this(configuredBase64Key, false);
+    }
+
+    private AiSecretCipher(String configuredBase64Key, boolean prodProfile) {
         byte[] keyBytes;
         if (configuredBase64Key == null || configuredBase64Key.isBlank()) {
+            if (prodProfile) {
+                throw new IllegalStateException("devsphere.ai.encryption-key must be configured in prod profile");
+            }
             log.warn("devsphere.ai.encryption-key is blank; deriving SHA-256 fallback key for dev/test");
             keyBytes = deriveFallbackKey();
         } else {
@@ -59,6 +78,10 @@ public class AiSecretCipher {
             }
         }
         this.secretKey = new SecretKeySpec(keyBytes, AES_ALGORITHM);
+    }
+
+    private static boolean isProdProfile(Environment environment) {
+        return environment != null && environment.acceptsProfiles(Profiles.of("prod"));
     }
 
     public String encrypt(String plaintext) {

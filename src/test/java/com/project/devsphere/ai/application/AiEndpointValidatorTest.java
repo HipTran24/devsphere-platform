@@ -1,10 +1,12 @@
 package com.project.devsphere.ai.application;
 
 import com.project.devsphere.ai.domain.AiProviderType;
+import com.project.devsphere.ai.infrastructure.AiProperties;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.springframework.mock.env.MockEnvironment;
 
 import java.net.URI;
 
@@ -99,5 +101,38 @@ class AiEndpointValidatorTest {
                 .isEqualTo("localhost");
         assertThat(AiEndpointValidator.validate("http://[::1]:8000", AiProviderType.VLLM_SELF_HOST, true).getPort())
                 .isEqualTo(8000);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "http://vllm.internal.example:8000",
+            "http://10.0.1.50:8000",
+            "http://vllm.example.com"
+    })
+    @DisplayName("BLOCKER-6: VLLM_SELF_HOST rejects plain http:// to non-loopback hosts even when allowLoopbackSelfHost=true")
+    void vllmRejectsPlainHttpToNonLoopbackHosts(String url) {
+        assertThatThrownBy(() -> AiEndpointValidator.validate(url, AiProviderType.VLLM_SELF_HOST, true))
+                .isInstanceOf(AiException.class);
+    }
+
+    @Test
+    @DisplayName("BLOCKER-6: prod profile hard-disables loopback and plain HTTP even if allowLoopbackSelfHost=true")
+    void prodProfileHardDisablesLoopbackSelfHost() {
+        AiProperties props = new AiProperties();
+        props.setAllowLoopbackSelfHost(true);
+        MockEnvironment prodEnv = new MockEnvironment();
+        prodEnv.setActiveProfiles("prod");
+
+        AiEndpointValidator validator = new AiEndpointValidator(props, prodEnv);
+        assertThat(validator.isLoopbackSelfHostAllowed()).isFalse();
+
+        assertThatThrownBy(() -> validator.validate("http://127.0.0.1:8000", AiProviderType.VLLM_SELF_HOST))
+                .isInstanceOf(AiException.class);
+        assertThatThrownBy(() -> validator.validate("http://localhost:8000", AiProviderType.VLLM_SELF_HOST))
+                .isInstanceOf(AiException.class);
+        assertThatThrownBy(() -> validator.validate("https://127.0.0.1:8000", AiProviderType.VLLM_SELF_HOST))
+                .isInstanceOf(AiException.class);
+        assertThat(validator.validate("https://10.0.1.50:8443", AiProviderType.VLLM_SELF_HOST).toString())
+                .isEqualTo("https://10.0.1.50:8443");
     }
 }

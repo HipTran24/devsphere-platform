@@ -144,7 +144,7 @@ public class OpenAiCompatibleClient {
             try {
                 InetAddress[] resolved = InetAddress.getAllByName(host);
                 for (InetAddress address : resolved) {
-                    AiEndpointValidator.validateAddress(address, provider, aiProperties.isAllowLoopbackSelfHost());
+                    AiEndpointValidator.validateAddress(address, provider, endpointValidator.isLoopbackSelfHostAllowed());
                 }
             } catch (UnknownHostException ex) {
                 throw AiException.unavailable("AI provider host could not be resolved");

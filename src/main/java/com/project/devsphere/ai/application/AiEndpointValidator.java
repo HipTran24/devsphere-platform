@@ -3,6 +3,8 @@ package com.project.devsphere.ai.application;
 import com.project.devsphere.ai.domain.AiProviderType;
 import com.project.devsphere.ai.infrastructure.AiProperties;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.env.Environment;
+import org.springframework.core.env.Profiles;
 import org.springframework.stereotype.Component;
 
 import java.net.InetAddress;
@@ -21,8 +23,8 @@ import java.util.regex.Pattern;
  *   <li>Rejects userinfo, query parameters, and fragments.</li>
  *   <li>Always rejects cloud metadata hosts/IPs, link-local, multicast, and unspecified addresses.</li>
  *   <li>{@code OPENAI} requires {@code https} and rejects loopback, localhost, and private literals.</li>
- *   <li>{@code VLLM_SELF_HOST} allows {@code https} always and permits {@code http} / loopback
- *       only when {@code devsphere.ai.allow-loopback-self-host=true}.</li>
+ *   <li>{@code VLLM_SELF_HOST} allows {@code https} always and permits plain {@code http} / loopback
+ *       only for loopback hosts when {@code devsphere.ai.allow-loopback-self-host=true} outside {@code prod}.</li>
  * </ul>
  */
 @Component
@@ -49,13 +51,22 @@ public class AiEndpointValidator {
 
     private final boolean allowLoopbackSelfHost;
 
-    @Autowired
     public AiEndpointValidator(AiProperties aiProperties) {
-        this(Objects.requireNonNull(aiProperties, "aiProperties must not be null").isAllowLoopbackSelfHost());
+        this(aiProperties, null);
+    }
+
+    @Autowired
+    public AiEndpointValidator(AiProperties aiProperties, Environment environment) {
+        this(Objects.requireNonNull(aiProperties, "aiProperties must not be null").isAllowLoopbackSelfHost()
+                && !isProdProfile(environment));
     }
 
     public AiEndpointValidator(boolean allowLoopbackSelfHost) {
         this.allowLoopbackSelfHost = allowLoopbackSelfHost;
+    }
+
+    public boolean isLoopbackSelfHostAllowed() {
+        return allowLoopbackSelfHost;
     }
 
     public URI validate(String rawBaseUrl, AiProviderType provider) {
@@ -76,18 +87,6 @@ public class AiEndpointValidator {
             uri = new URI(trimmed);
         } catch (URISyntaxException ex) {
             throw AiException.invalidInput("baseUrl is not a valid URI");
-        }
-
-        String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase(Locale.ROOT);
-        if (provider == AiProviderType.OPENAI) {
-            if (!"https".equals(scheme)) {
-                throw AiException.invalidInput("OPENAI endpoint must use https");
-            }
-        } else {
-            boolean allowedHttp = allowLoopbackSelfHost && "http".equals(scheme);
-            if (!"https".equals(scheme) && !allowedHttp) {
-                throw AiException.invalidInput("VLLM_SELF_HOST endpoint must use https");
-            }
         }
 
         if (uri.getRawUserInfo() != null || uri.getRawQuery() != null || uri.getRawFragment() != null) {
@@ -113,13 +112,6 @@ public class AiEndpointValidator {
             throw AiException.invalidInput("baseUrl targets a forbidden metadata host");
         }
 
-        boolean loopbackHost = isLoopbackHostname(normalized);
-        if (loopbackHost) {
-            if (provider == AiProviderType.OPENAI || !allowLoopbackSelfHost) {
-                throw AiException.invalidInput("baseUrl loopback host is not permitted for " + provider);
-            }
-        }
-
         boolean isIpv4Literal = IPV4_LITERAL.matcher(normalized).matches();
         boolean isIpv6Literal = normalized.contains(":");
         if (!isIpv4Literal && !isIpv6Literal && NON_CANONICAL_NUMERIC_HOST.matcher(normalized).matches()) {
@@ -130,6 +122,11 @@ public class AiEndpointValidator {
             throw AiException.invalidInput("baseUrl IPv4 octets must not contain leading zeros");
         }
 
+        boolean loopbackHost = isLoopbackHostname(normalized);
+        if (loopbackHost && (provider == AiProviderType.OPENAI || !allowLoopbackSelfHost)) {
+            throw AiException.invalidInput("baseUrl loopback host is not permitted for " + provider);
+        }
+
         if (isIpv4Literal || isIpv6Literal) {
             InetAddress address;
             try {
@@ -138,6 +135,21 @@ public class AiEndpointValidator {
                 throw AiException.invalidInput("baseUrl contains an invalid IP address");
             }
             validateAddress(address, provider, allowLoopbackSelfHost);
+            if (address.isLoopbackAddress()) {
+                loopbackHost = true;
+            }
+        }
+
+        String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase(Locale.ROOT);
+        if (provider == AiProviderType.OPENAI) {
+            if (!"https".equals(scheme)) {
+                throw AiException.invalidInput("OPENAI endpoint must use https");
+            }
+        } else {
+            boolean allowedLoopbackHttp = allowLoopbackSelfHost && loopbackHost && "http".equals(scheme);
+            if (!"https".equals(scheme) && !allowedLoopbackHttp) {
+                throw AiException.invalidInput("VLLM_SELF_HOST endpoint must use https");
+            }
         }
 
         return stripTrailingSlash(uri);
@@ -183,6 +195,10 @@ public class AiEndpointValidator {
             normalized = normalized.substring(0, normalized.length() - 1);
         }
         return normalized;
+    }
+
+    private static boolean isProdProfile(Environment environment) {
+        return environment != null && environment.acceptsProfiles(Profiles.of("prod"));
     }
 
     private static boolean isLoopbackHostname(String normalized) {

@@ -26,6 +26,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Instant;
 import java.util.LinkedHashMap;
@@ -36,7 +37,6 @@ import java.util.UUID;
 import java.util.regex.Pattern;
 
 @Service
-@Transactional
 public class ChatService {
 
     private static final Logger log = LoggerFactory.getLogger(ChatService.class);
@@ -50,6 +50,7 @@ public class ChatService {
     private final JdbcTemplate jdbcTemplate;
     private final ObjectProvider<RealtimeEventPublisher> realtimeEventPublisher;
     private final ObjectProvider<AiExecutionService> aiExecutionService;
+    private final ObjectProvider<TransactionTemplate> transactionTemplate;
 
     public ChatService(
             ChatChannelRepository chatChannelRepository,
@@ -59,7 +60,7 @@ public class ChatService {
             NotificationService notificationService,
             JdbcTemplate jdbcTemplate) {
         this(chatChannelRepository, chatChannelMemberRepository, chatMessageRepository,
-                accessPolicy, notificationService, jdbcTemplate, null, null);
+                accessPolicy, notificationService, jdbcTemplate, null, null, null);
     }
 
     public ChatService(
@@ -71,7 +72,20 @@ public class ChatService {
             JdbcTemplate jdbcTemplate,
             ObjectProvider<RealtimeEventPublisher> realtimeEventPublisher) {
         this(chatChannelRepository, chatChannelMemberRepository, chatMessageRepository,
-                accessPolicy, notificationService, jdbcTemplate, realtimeEventPublisher, null);
+                accessPolicy, notificationService, jdbcTemplate, realtimeEventPublisher, null, null);
+    }
+
+    public ChatService(
+            ChatChannelRepository chatChannelRepository,
+            ChatChannelMemberRepository chatChannelMemberRepository,
+            ChatMessageRepository chatMessageRepository,
+            AccessPolicy accessPolicy,
+            NotificationService notificationService,
+            JdbcTemplate jdbcTemplate,
+            ObjectProvider<RealtimeEventPublisher> realtimeEventPublisher,
+            ObjectProvider<AiExecutionService> aiExecutionService) {
+        this(chatChannelRepository, chatChannelMemberRepository, chatMessageRepository,
+                accessPolicy, notificationService, jdbcTemplate, realtimeEventPublisher, aiExecutionService, null);
     }
 
     @Autowired
@@ -83,7 +97,8 @@ public class ChatService {
             NotificationService notificationService,
             JdbcTemplate jdbcTemplate,
             ObjectProvider<RealtimeEventPublisher> realtimeEventPublisher,
-            ObjectProvider<AiExecutionService> aiExecutionService) {
+            ObjectProvider<AiExecutionService> aiExecutionService,
+            ObjectProvider<TransactionTemplate> transactionTemplate) {
         this.chatChannelRepository = Objects.requireNonNull(chatChannelRepository, "chatChannelRepository must not be null");
         this.chatChannelMemberRepository = Objects.requireNonNull(chatChannelMemberRepository, "chatChannelMemberRepository must not be null");
         this.chatMessageRepository = Objects.requireNonNull(chatMessageRepository, "chatMessageRepository must not be null");
@@ -92,8 +107,10 @@ public class ChatService {
         this.jdbcTemplate = Objects.requireNonNull(jdbcTemplate, "jdbcTemplate must not be null");
         this.realtimeEventPublisher = realtimeEventPublisher;
         this.aiExecutionService = aiExecutionService;
+        this.transactionTemplate = transactionTemplate;
     }
 
+    @Transactional
     public ChatChannel createChannel(
             SessionService.Principal principal,
             UUID workspaceId,
@@ -170,6 +187,7 @@ public class ChatService {
         return chatChannelRepository.findUserChannels(workspaceId, projectId, principal.userId());
     }
 
+    @Transactional
     public ChatChannelMember addMember(
             SessionService.Principal principal,
             UUID workspaceId,
@@ -267,6 +285,49 @@ public class ChatService {
             List<UUID> mentions,
             UUID replyToId) {
 
+        boolean outerTxActive = TransactionSynchronizationManager.isSynchronizationActive();
+        TransactionTemplate txTemplate = transactionTemplate == null ? null : transactionTemplate.getIfAvailable();
+
+        ChatMessage saved;
+        if (!outerTxActive && txTemplate != null) {
+            saved = txTemplate.execute(status -> persistAndNotifyUserMessage(
+                    principal, workspaceId, projectId, channelId, body, mentions, replyToId));
+        } else {
+            saved = persistAndNotifyUserMessage(
+                    principal, workspaceId, projectId, channelId, body, mentions, replyToId);
+        }
+
+        // Best-effort post-commit @ProjectAI reply trigger (TX already committed & DB connection released when !outerTxActive)
+        AiExecutionService aiExec = aiExecutionService == null ? null : aiExecutionService.getIfAvailable();
+        if (aiExec != null && saved != null && projectId != null && containsProjectAiMention(saved.getBody())) {
+            UUID savedMessageId = saved.getId();
+            String promptBody = saved.getBody();
+            Runnable aiTrigger = () -> triggerProjectAiBestEffort(
+                    aiExec, principal, workspaceId, projectId, channelId, savedMessageId, promptBody);
+            if (TransactionSynchronizationManager.isSynchronizationActive()) {
+                TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                    @Override
+                    public void afterCommit() {
+                        aiTrigger.run();
+                    }
+                });
+            } else {
+                aiTrigger.run();
+            }
+        }
+
+        return saved;
+    }
+
+    private ChatMessage persistAndNotifyUserMessage(
+            SessionService.Principal principal,
+            UUID workspaceId,
+            UUID projectId,
+            UUID channelId,
+            String body,
+            List<UUID> mentions,
+            UUID replyToId) {
+
         if (body == null || body.trim().isEmpty()) {
             throw ChatException.validationFailed("Message body must not be blank");
         }
@@ -340,25 +401,6 @@ public class ChatService {
         RealtimeEventPublisher publisher = realtimeEventPublisher == null ? null : realtimeEventPublisher.getIfAvailable();
         if (publisher != null && saved != null && workspaceId != null && projectId != null && channelId != null) {
             publisher.publishChatMessage(workspaceId, projectId, channelId, ChatMessageResponse.from(saved));
-        }
-
-        // Best-effort post-commit @ProjectAI reply trigger (HTTP I/O runs strictly outside ChatService tx)
-        AiExecutionService aiExec = aiExecutionService == null ? null : aiExecutionService.getIfAvailable();
-        if (aiExec != null && saved != null && projectId != null && containsProjectAiMention(saved.getBody())) {
-            UUID savedMessageId = saved.getId();
-            String promptBody = saved.getBody();
-            Runnable aiTrigger = () -> triggerProjectAiBestEffort(
-                    aiExec, principal, workspaceId, projectId, channelId, savedMessageId, promptBody);
-            if (TransactionSynchronizationManager.isSynchronizationActive()) {
-                TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-                    @Override
-                    public void afterCommit() {
-                        aiTrigger.run();
-                    }
-                });
-            } else {
-                aiTrigger.run();
-            }
         }
 
         return saved;

@@ -196,6 +196,9 @@ public class AiExecutionService {
         if (job.getStatus() == AiJob.Status.SUCCESS) {
             throw AiException.unprocessable("AI_JOB_ALREADY_COMPLETED", "AI job already completed: " + jobId);
         }
+        if (job.getStatus() == AiJob.Status.RUNNING) {
+            throw AiException.conflict("AI_JOB_ALREADY_RUNNING", "AI job is already running: " + jobId);
+        }
         if (job.getValidationAttempts() != null && job.getValidationAttempts() >= 2) {
             throw AiException.maxAttemptsExceeded("Maximum validation attempts (2) exceeded for AI job: " + jobId);
         }
