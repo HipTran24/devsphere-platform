@@ -27,11 +27,31 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# Acquire non-blocking lock
-exec 200>"${LOCK_FILE}"
-if ! flock -n 200; then
-  printf '[%s] Another backup or restore job is already running; exiting.\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-  exit 0
+# Acquire non-blocking lock (uses flock when available, atomic dir lock fallback otherwise)
+if command -v flock >/dev/null 2>&1; then
+  exec 200>"${LOCK_FILE}"
+  if ! flock -n 200; then
+    printf '[%s] Another backup or restore job is already running; exiting.\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    exit 0
+  fi
+else
+  LOCK_DIR="${LOCK_FILE}.lock.d"
+  if ! mkdir "${LOCK_DIR}" 2>/dev/null; then
+    if [[ -d "${LOCK_DIR}" ]]; then
+      lock_age=$(( $(date +%s) - $(stat -c %Y "${LOCK_DIR}" 2>/dev/null || stat -f %m "${LOCK_DIR}" 2>/dev/null || echo 0) ))
+      if [[ "${lock_age}" -gt 7200 ]]; then
+        printf '[%s] Removing stale backup lock dir (age: %ds)\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${lock_age}"
+        rm -rf "${LOCK_DIR}"
+        mkdir "${LOCK_DIR}" 2>/dev/null || exit 0
+      else
+        printf '[%s] Another backup or restore job is already running; exiting.\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        exit 0
+      fi
+    else
+      exit 0
+    fi
+  fi
+  trap 'rm -rf "${LOCK_DIR}" 2>/dev/null || true' EXIT
 fi
 
 printf '[%s] Starting automated cron backup run...\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"

@@ -162,5 +162,92 @@ class InfraConfigTests(unittest.TestCase):
                     )
 
 
+    def test_dockerfiles_security_and_non_root(self):
+        """Dockerfiles must enforce multi-stage builds, non-root user UID 10001, and healthchecks."""
+        backend_df = REPO_ROOT / "Dockerfile"
+        self.assertTrue(backend_df.exists(), "Backend Dockerfile not found")
+        backend_content = backend_df.read_text(encoding="utf-8")
+
+        self.assertIn("FROM eclipse-temurin:27-jdk", backend_content)
+        self.assertIn("FROM eclipse-temurin:27-jre", backend_content)
+        self.assertIn("10001", backend_content)
+        self.assertIn("USER devsphere:devsphere", backend_content)
+        self.assertIn("tini", backend_content)
+        self.assertIn("HEALTHCHECK", backend_content)
+        self.assertIn("8081/actuator/health/readiness", backend_content)
+
+        frontend_df = REPO_ROOT / "frontend" / "Dockerfile"
+        self.assertTrue(frontend_df.exists(), "Frontend Dockerfile not found")
+        frontend_content = frontend_df.read_text(encoding="utf-8")
+
+        self.assertIn("FROM node:22-alpine", frontend_content)
+        self.assertIn("10001", frontend_content)
+        self.assertIn("USER nextjs", frontend_content)
+        self.assertIn("HEALTHCHECK", frontend_content)
+        self.assertIn("3000/login", frontend_content)
+
+    def test_disaster_recovery_backup_pipeline(self):
+        """Backup and restore scripts must enforce AES-256 PBKDF2 600k and integrity invariants."""
+        common_path = REPO_ROOT / "infra" / "backup" / "backup-common.sh"
+        self.assertTrue(common_path.exists())
+        common_content = common_path.read_text(encoding="utf-8")
+
+        self.assertIn("-aes-256-cbc", common_content)
+        self.assertIn("-pbkdf2", common_content)
+        self.assertIn("600000", common_content)
+
+        backup_path = REPO_ROOT / "infra" / "backup" / "backup-postgres.sh"
+        self.assertTrue(backup_path.exists())
+        backup_content = backup_path.read_text(encoding="utf-8")
+        self.assertIn("sha256_of", backup_content)
+        self.assertIn(".meta.json", backup_content)
+
+        restore_path = REPO_ROOT / "infra" / "backup" / "restore-verify.sh"
+        self.assertTrue(restore_path.exists())
+        restore_content = restore_path.read_text(encoding="utf-8")
+        self.assertIn("DROP DATABASE IF EXISTS", restore_content)
+        self.assertIn("-lt 36", restore_content)
+        self.assertIn("10:t", restore_content)
+
+    def test_observability_pipeline_and_log_shipping(self):
+        """Prometheus, Loki, and Alloy configurations must define valid observability pipelines."""
+        prom_path = REPO_ROOT / "infra" / "monitoring" / "prometheus" / "prometheus.yml"
+        self.assertTrue(prom_path.exists())
+        prom_content = prom_path.read_text(encoding="utf-8")
+        self.assertIn("backend:8081", prom_content)
+        self.assertIn("/actuator/prometheus", prom_content)
+        self.assertIn("admin-token", prom_content)
+
+        loki_path = REPO_ROOT / "infra" / "monitoring" / "loki" / "loki-config.yml"
+        self.assertTrue(loki_path.exists())
+        loki_content = loki_path.read_text(encoding="utf-8")
+        self.assertIn("3100", loki_content)
+        self.assertIn("retention_enabled: true", loki_content)
+
+        alloy_path = REPO_ROOT / "infra" / "monitoring" / "alloy" / "config.alloy"
+        self.assertTrue(alloy_path.exists())
+        alloy_content = alloy_path.read_text(encoding="utf-8")
+        self.assertIn("/var/lib/docker/containers/*/*-json.log", alloy_content)
+        self.assertIn("http://loki:3100/loki/api/v1/push", alloy_content)
+
+    def test_ci_pipeline_structure_and_gates(self):
+        """CI pipeline must enforce concurrency controls, timeouts, and all required quality gates."""
+        ci_path = REPO_ROOT / ".github" / "workflows" / "ci.yml"
+        self.assertTrue(ci_path.exists())
+        ci_content = ci_path.read_text(encoding="utf-8")
+
+        self.assertIn("concurrency:", ci_content)
+        self.assertIn("cancel-in-progress:", ci_content)
+        self.assertIn("backend-verify:", ci_content)
+        self.assertIn("frontend-check:", ci_content)
+        self.assertIn("frontend-e2e:", ci_content)
+        self.assertIn("infra-and-ai-verify:", ci_content)
+        self.assertIn("timeout-minutes:", ci_content)
+        self.assertIn("java-version: '27'", ci_content)
+        self.assertIn("./mvnw -B verify", ci_content)
+        self.assertIn("npm run test:e2e", ci_content)
+        self.assertIn("tests/infra", ci_content)
+
+
 if __name__ == "__main__":
     unittest.main()

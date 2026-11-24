@@ -46,7 +46,13 @@ load_db_settings() {
   port="$(printf '%s' "${url}" | sed -nE 's#^jdbc:postgresql://[^:/]+:([0-9]+)/.*#\1#p')"
   PGHOST="${PGHOST:-127.0.0.1}"
   PGPORT="${PGPORT:-${port:-$(env_default DATABASE_PORT 54329)}}"
-  PG_CONTAINER="${PG_CONTAINER:-Devphere-DB}"
+  if [[ -z "${PG_CONTAINER:-}" ]]; then
+    if command -v docker >/dev/null 2>&1 && docker inspect devsphere-postgres >/dev/null 2>&1; then
+      PG_CONTAINER="devsphere-postgres"
+    else
+      PG_CONTAINER="Devphere-DB"
+    fi
+  fi
   if command -v pg_dump >/dev/null 2>&1 && command -v pg_restore >/dev/null 2>&1 && command -v psql >/dev/null 2>&1 \
      && [[ "${PG_FORCE_DOCKER:-0}" != "1" ]]; then
     PG_MODE="local"

@@ -56,8 +56,10 @@ mkdir -p "${TOKEN_DIR}"
 # Prometheus runs as nobody inside its container and must be able to traverse the directory.
 chmod 755 "${TOKEN_DIR}"
 tmp="$(mktemp "${TOKEN_DIR}/.admin-token.XXXXXX")"
+trap 'rm -f "${tmp}" 2>/dev/null || true' EXIT
 printf '%s' "${access_token}" > "${tmp}"
 # Prometheus runs as nobody, so the file must be world-readable inside the (git-ignored) directory.
 chmod 644 "${tmp}"
 mv "${tmp}" "${TOKEN_FILE}"
+trap - EXIT
 log "scrape token refreshed (expires $(printf '%s' "${response}" | jq -r '.expiresAt // "unknown"'))"
