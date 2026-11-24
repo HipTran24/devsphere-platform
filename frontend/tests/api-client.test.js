@@ -268,3 +268,172 @@ test('RFC 7807 problem details are translated into structured ApiClientError', a
 
   globalThis.fetch = async () => {
     return new Response(
+      JSON.stringify({
+        title: 'Conflict',
+        status: 409,
+        detail: 'Workspace slug is already in use',
+        code: 'SLUG_CONFLICT',
+        errors: [{ field: 'slug', reason: 'already exists' }],
+      }),
+      { status: 409, headers: { 'Content-Type': 'application/problem+json' } }
+    );
+  };
+
+  try {
+    await assert.rejects(
+      async () => {
+        await apiFetch('/api/v1/workspaces', { method: 'POST', body: { slug: 'devsphere' } });
+      },
+      (err) => {
+        assert.ok(err instanceof ApiClientError);
+        assert.equal(err.status, 409);
+        assert.equal(err.code, 'SLUG_CONFLICT');
+        assert.equal(err.detail, 'Workspace slug is already in use');
+        assert.equal(err.errors?.[0]?.field, 'slug');
+        return true;
+      }
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('auth methods (login, refreshSession, logout, fetchCurrentUser) format and execute correctly', async () => {
+  const originalFetch = globalThis.fetch;
+  const calls = [];
+
+  globalThis.fetch = async (url, options) => {
+    calls.push({ url, method: options?.method || 'GET', headers: options?.headers });
+    if (url.includes('/api/v1/auth/csrf')) {
+      return new Response(JSON.stringify({ headerName: 'X-CSRF-TOKEN', token: 'csrf-1' }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }
+    if (url.includes('/api/v1/auth/login')) {
+      return new Response(JSON.stringify({ accessToken: 'login-token', expiresAt: '2026-11-24T18:00:00Z' }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }
+    if (url.includes('/api/v1/auth/refresh')) {
+      return new Response(JSON.stringify({ accessToken: 'refresh-token', expiresAt: '2026-11-24T18:15:00Z' }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }
+    if (url.includes('/api/v1/auth/me')) {
+      return new Response(JSON.stringify({ userId: 'u-1', displayName: 'Sarah PM', systemRole: 'USER' }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }
+    if (url.includes('/api/v1/auth/logout')) {
+      return new Response(null, { status: 204 });
+    }
+    return new Response('{}', { status: 200 });
+  };
+
+  try {
+    clearCsrfCache();
+    clearAccessToken();
+
+    // 1. login
+    const loginRes = await login({ email: 'pm@devsphere.io', password: 'DevSpherePm2026!' });
+    assert.equal(loginRes.accessToken, 'login-token');
+    assert.equal(getAccessToken(), 'login-token');
+
+    // 2. fetchCurrentUser
+    const me = await fetchCurrentUser();
+    assert.equal(me.displayName, 'Sarah PM');
+
+    // 3. refreshSession
+    const refreshed = await refreshSession();
+    assert.equal(refreshed.accessToken, 'refresh-token');
+    assert.equal(getAccessToken(), 'refresh-token');
+
+    // 4. logout
+    await logout();
+    assert.equal(getAccessToken(), null);
+  } finally {
+    globalThis.fetch = originalFetch;
+    clearAccessToken();
+    clearCsrfCache();
+  }
+});
+
+test('domain API methods invoke correct routes and HTTP methods', async () => {
+  const originalFetch = globalThis.fetch;
+  const routesCalled = [];
+
+  globalThis.fetch = async (url, options) => {
+    routesCalled.push({ url, method: (options?.method || 'GET').toUpperCase() });
+    return new Response(JSON.stringify({ id: 'dummy-res', ok: true }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  };
+
+  try {
+    clearCsrfCache();
+    const wId = 'w-101';
+    const pId = 'p-202';
+    const wiId = 'wi-303';
+    const sId = 's-404';
+    const propId = 'prop-505';
+
+    // Workspaces & Projects
+    await fetchWorkspaces({ page: 1, size: 10 });
+    await getWorkspace(wId);
+    await createWorkspace({ name: 'DevSphere Core', slug: 'devsphere-core' });
+    await updateWorkspace(wId, { name: 'Updated' });
+    await fetchProjects(wId);
+    await getProject(wId, pId);
+    await createProject(wId, { projectKey: 'DSP', name: 'DevSphere Platform' });
+    await activateProject(wId, pId);
+
+    // Requirements
+    await fetchRequirements(wId, pId, { status: 'APPROVED' });
+    await createRequirement(wId, pId, { title: 'Auth' });
+
+    // WorkItems & Backlog
+    await fetchWorkItems(wId, pId, { status: 'IN_PROGRESS', type: 'TASK' });
+    await fetchBacklog(wId, pId);
+    await createWorkItem(wId, pId, { title: 'Implement proxy' });
+    await updateWorkItem(wId, pId, wiId, { title: 'New title' });
+    await deleteWorkItem(wId, pId, wiId);
+    await transitionWorkItemStatus(wId, pId, wiId, { targetStatus: 'DONE' });
+    await blockWorkItem(wId, pId, wiId, { blocked: true, blockedReason: 'Blocked on API' });
+    await acceptWorkItem(wId, pId, wiId);
+    await rejectWorkItem(wId, pId, wiId, { reason: 'Test failed' });
+
+    // Dependencies
+    await fetchDependencies(wId, pId);
+    await createDependency(wId, pId, { predecessorId: 'a', successorId: 'b' });
+    await deleteDependency(wId, pId, 'dep-1');
+
+    // Sprints
+    await fetchSprints(wId, pId, { status: 'ACTIVE' });
+    await getSprint(wId, pId, sId);
+    await createSprint(wId, pId, { name: 'Sprint 1' });
+    await startSprint(wId, pId, sId);
+    await closeSprint(wId, pId, sId);
+    await getSprintProgress(wId, pId, sId);
+    await addSprintItems(wId, pId, sId, ['item-1']);
+    await removeSprintItems(wId, pId, sId, ['item-1']);
+
+    // Quality Gate
+    await fetchQualityGate(wId, pId, wiId);
+
+    // Plan Proposals
+    await fetchPlanProposals(wId, pId);
+    await getPlanProposal(wId, pId, propId);
+    await createPlanProposal(wId, pId, { kind: 'AUTO_REPLAN' });
+    await solvePlanProposal(wId, pId, propId, { maxTimeSeconds: 10 });
+    await previewPlanProposal(wId, pId, propId);
+    await approvePlanProposal(wId, pId, propId, { notes: 'Approved' });
+    await confirmDeadline(wId, pId, propId, { rationale: 'Accept delay' });
+    await applyPlanProposal(wId, pId, propId);
+
+    // Verify all routes were called
+    assert.ok(routesCalled.some(r => r.url.includes('/api/v1/workspaces?page=1&size=10')));
+    assert.ok(routesCalled.some(r => r.url.includes(`/api/v1/workspaces/${wId}`) && r.method === 'GET'));
+    assert.ok(routesCalled.some(r => r.url.includes('/api/v1/workspaces') && r.method === 'POST'));
+    assert.ok(routesCalled.some(r => r.url.includes(`/api/v1/workspaces/${wId}/projects/${pId}/backlog`)));
+    assert.ok(routesCalled.some(r => r.url.includes(`/work-items/${wiId}/accept`) && r.method === 'POST'));
+    assert.ok(routesCalled.some(r => r.url.includes(`/work-items/${wiId}/blocked`) && r.method === 'PATCH'));
+    assert.ok(routesCalled.some(r => r.url.includes(`/work-items/${wiId}/quality-gate`)));
+    assert.ok(routesCalled.some(r => r.url.includes(`/plan-proposals/${propId}/solve`) && r.method === 'POST'));
+    assert.ok(routesCalled.some(r => r.url.includes(`/plan-proposals/${propId}/preview`)));
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
