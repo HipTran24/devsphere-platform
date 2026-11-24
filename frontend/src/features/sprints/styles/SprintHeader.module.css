@@ -1,0 +1,220 @@
+.headerContainer {
+  background: var(--color-card, #171716);
+  border: 1px solid #27272a;
+  border-radius: 12px;
+  padding: 24px;
+  margin-bottom: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.topRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.titleArea {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+  min-width: 280px;
+}
+
+.metaRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.sprintSelector {
+  background: #1f1f23;
+  color: var(--color-text, #e3e5e1);
+  border: 1px solid #3f3f46;
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.sprintSelector:hover {
+  background: #27272a;
+  border-color: #52525b;
+}
+
+.sprintSelector:focus-visible {
+  border-color: var(--color-primary, #2dd4bf);
+  outline: 2px solid var(--color-primary, #2dd4bf);
+  outline-offset: 1px;
+}
+
+.statusBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 9999px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.statusActive {
+  background: rgba(45, 212, 191, 0.15);
+  color: #2dd4bf;
+  border: 1px solid rgba(45, 212, 191, 0.3);
+}
+
+.statusPlanned {
+  background: rgba(168, 85, 247, 0.15);
+  color: #c084fc;
+  border: 1px solid rgba(168, 85, 247, 0.3);
+}
+
+.statusClosed {
+  background: rgba(113, 113, 122, 0.2);
+  color: #a1a1aa;
+  border: 1px solid #3f3f46;
+}
+
+.sprintHeading {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--color-text, #e3e5e1);
+  margin: 0;
+  line-height: 1.25;
+}
+
+.sprintGoal {
+  font-size: 14px;
+  color: var(--color-text-secondary, #a8aba6);
+  margin: 0;
+  line-height: 1.5;
+  max-width: 800px;
+}
+
+.dateRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #71717a;
+  margin-top: 4px;
+}
+
+.controlsArea {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.roleSimulator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #1b1b1e;
+  border: 1px solid #2e2e33;
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+.roleLabel {
+  color: #a1a1aa;
+  font-size: 12px;
+}
+
+.roleSelect {
+  background: #27272a;
+  color: #e3e5e1;
+  border: 1px solid #3f3f46;
+  border-radius: 4px;
+  padding: 3px 8px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.metricsContainer {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: #141416;
+  border: 1px solid #222225;
+  border-radius: 8px;
+  padding: 16px 20px;
+}
+
+.metricsSummary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.statsGroup {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+
+.statItem {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.statValue {
+  font-size: 16px;
+  font-weight: 700;
+  color: #f4f4f5;
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.statSubtext {
+  font-size: 12px;
+  color: #a1a1aa;
+  font-weight: 400;
+}
+
+.statLabel {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #71717a;
+  font-weight: 500;
+}
+
+.progressBarTrack {
+  width: 100%;
+  height: 8px;
+  background: #27272a;
+  border-radius: 9999px;
+  overflow: hidden;
+  position: relative;
+}
+
+.progressBarFill {
+  height: 100%;
+  background: linear-gradient(90deg, #0d9488 0%, #2dd4bf 100%);
+  border-radius: 9999px;
+  transition: width 0.3s ease-in-out;
+}
+
+.progressBarComplete {
+  background: #10b981;
+}
