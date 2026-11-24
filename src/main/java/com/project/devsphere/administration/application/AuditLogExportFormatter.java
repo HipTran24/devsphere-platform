@@ -71,9 +71,12 @@ public final class AuditLogExportFormatter {
             return "";
         }
         String safe = value;
-        char first = safe.charAt(0);
-        if (first == '=' || first == '+' || first == '-' || first == '@' || first == '\t' || first == '\r') {
-            safe = "'" + safe;
+        String trimmed = safe.stripLeading();
+        if (!trimmed.isEmpty()) {
+            char first = trimmed.charAt(0);
+            if (first == '=' || first == '+' || first == '-' || first == '@' || first == '\t' || first == '\r') {
+                safe = "'" + safe;
+            }
         }
         if (safe.indexOf(',') >= 0 || safe.indexOf('"') >= 0 || safe.indexOf('\n') >= 0 || safe.indexOf('\r') >= 0) {
             safe = '"' + safe.replace("\"", "\"\"") + '"';
