@@ -143,6 +143,7 @@ export default function EditWorkItemModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby={`${formId}-title`}
+        aria-describedby={`${formId}-dialog-desc`}
       >
         <div className={styles.modalHeader}>
           <div className={styles.modalTitleWrap}>
@@ -151,7 +152,7 @@ export default function EditWorkItemModal({
               <span>Edit Work Item</span>
               <span className={styles.keyBadge}>{item.itemKey}</span>
             </h2>
-            <p className={styles.modalSubtitle}>Update details, state transitions, or blocking reasons.</p>
+            <p id={`${formId}-dialog-desc`} className={styles.modalSubtitle}>Update details, state transitions, or blocking reasons.</p>
           </div>
           <button
             type="button"

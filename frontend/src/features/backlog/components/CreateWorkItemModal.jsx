@@ -102,6 +102,7 @@ export default function CreateWorkItemModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby={`${formId}-title`}
+        aria-describedby={`${formId}-dialog-desc`}
       >
         <div className={styles.modalHeader}>
           <div className={styles.modalTitleWrap}>
@@ -109,7 +110,7 @@ export default function CreateWorkItemModal({
               <PlusCircle size={20} aria-hidden="true" />
               <span>Create Work Item</span>
             </h2>
-            <p className={styles.modalSubtitle}>Add a new item to the project backlog hierarchy.</p>
+            <p id={`${formId}-dialog-desc`} className={styles.modalSubtitle}>Add a new item to the project backlog hierarchy.</p>
           </div>
           <button
             type="button"
