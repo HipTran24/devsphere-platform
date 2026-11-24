@@ -1,45 +1,174 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState } from 'react';
-import { isAuthMock, loginAccount, loginWithGoogle } from '../api';
+import { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import { isAuthMock, loginAccount, loginWithGoogle, logoutAccount } from '../api';
 import { createDemoSession, restoreDemoSession, clearDemoSession } from '../demo-session';
 import { clearAuthFlow } from '../demo-store';
+import {
+    setAccessToken,
+    clearAccessToken,
+    refreshSession,
+    fetchCurrentUser,
+    onAuthFailure,
+} from '../../../lib/api-client';
 
 const AuthContext = createContext(null);
+
 export default function AuthProvider({ children }) {
     const [session, setSession] = useState(null);
     const [ready, setReady] = useState(false);
     const [notice, setNotice] = useState('');
-    useEffect(() => {
-        function restore() {
-            const previous = restoreDemoSession();
-            setSession(isAuthMock ? previous : null);
-            setReady(true);
+
+    const handleSignOut = useCallback(async () => {
+        try {
+            await logoutAccount();
+        } catch {
+            clearAccessToken();
         }
-        restore();
-        window.addEventListener('storage', restore);
-        window.addEventListener('focus', restore);
-        return () => { window.removeEventListener('storage', restore); window.removeEventListener('focus', restore); };
+        clearDemoSession();
+        clearAuthFlow();
+        setSession(null);
+        setNotice('Signed out.');
     }, []);
+
     useEffect(() => {
-        if (!session) return;
+        let isMounted = true;
+
+        async function restore() {
+            if (isAuthMock) {
+                const previous = restoreDemoSession();
+                if (isMounted) {
+                    setSession(previous);
+                    setReady(true);
+                }
+                return;
+            }
+
+            // Real backend session hydration via silent refresh
+            try {
+                const refreshed = await refreshSession();
+                if (refreshed?.accessToken) {
+                    const me = await fetchCurrentUser();
+                    if (isMounted && me?.userId) {
+                        setSession({
+                            user: {
+                                id: me.userId,
+                                displayName: me.displayName || 'DevSphere User',
+                                systemRole: me.systemRole || 'USER',
+                            },
+                            token: refreshed.accessToken,
+                            accessToken: refreshed.accessToken,
+                            expiresAt: refreshed.expiresAt,
+                            isReal: true,
+                        });
+                    }
+                }
+            } catch {
+                if (isMounted) setSession(null);
+            } finally {
+                if (isMounted) setReady(true);
+            }
+        }
+
+        restore();
+
+        const handleStorageOrFocus = () => {
+            if (isAuthMock) {
+                const prev = restoreDemoSession();
+                setSession(prev);
+            }
+        };
+
+        window.addEventListener('storage', handleStorageOrFocus);
+        window.addEventListener('focus', handleStorageOrFocus);
+
+        const unsubscribeAuthFailure = onAuthFailure(() => {
+            if (isMounted) {
+                clearDemoSession();
+                clearAuthFlow();
+                setSession(null);
+                setNotice('Session expired. Sign in again.');
+            }
+        });
+
+        return () => {
+            isMounted = false;
+            window.removeEventListener('storage', handleStorageOrFocus);
+            window.removeEventListener('focus', handleStorageOrFocus);
+            unsubscribeAuthFailure();
+        };
+    }, []);
+
+    useEffect(() => {
+        if (!session?.expiresAt) return;
+        const remaining = Math.max(0, new Date(session.expiresAt).getTime() - Date.now());
         const timer = setTimeout(() => {
-            clearDemoSession();
-            setSession(null);
-            setNotice('Session expired. Sign in again.');
-        }, Math.max(0, session.expiresAt - Date.now()));
+            if (session.isReal) {
+                // In real mode, attempt refresh before dropping session
+                refreshSession()
+                    .then((refreshed) => {
+                        setSession((prev) =>
+                            prev ? { ...prev, token: refreshed.accessToken, expiresAt: refreshed.expiresAt } : null
+                        );
+                    })
+                    .catch(() => {
+                        clearAccessToken();
+                        setSession(null);
+                        setNotice('Session expired. Sign in again.');
+                    });
+            } else {
+                clearDemoSession();
+                setSession(null);
+                setNotice('Session expired. Sign in again.');
+            }
+        }, remaining);
         return () => clearTimeout(timer);
     }, [session]);
-    function accept(result, remember) {
-        if (result.mock && result.user && isAuthMock) setSession(createDemoSession(result.user, remember));
+
+    const signIn = useCallback(async (values, remember) => {
+        const result = await loginAccount(values);
+        if (result.mock && result.user && isAuthMock) {
+            const demoSession = createDemoSession(result.user, remember);
+            setSession(demoSession);
+            return result;
+        }
+        if (result.accessToken && result.user) {
+            setAccessToken(result.accessToken, result.expiresAt);
+            const realSession = {
+                user: result.user,
+                token: result.accessToken,
+                accessToken: result.accessToken,
+                expiresAt: result.expiresAt ? new Date(result.expiresAt).getTime() : Date.now() + 900000,
+                isReal: true,
+            };
+            setSession(realSession);
+            return result;
+        }
         return result;
-    }
+    }, []);
+
+    const signInGoogle = useCallback(async (remember) => {
+        const result = await loginWithGoogle();
+        if (result.mock && result.user && isAuthMock) {
+            const demoSession = createDemoSession(result.user, remember);
+            setSession(demoSession);
+        }
+        return result;
+    }, []);
+
     const value = {
-        session, ready, notice, setNotice,
-        signIn: async (values, remember) => accept(await loginAccount(values), remember),
-        signInGoogle: async remember => accept(await loginWithGoogle(), remember),
-        logout: () => { clearDemoSession(); clearAuthFlow(); setSession(null); setNotice('Signed out.'); },
+        session,
+        ready,
+        notice,
+        setNotice,
+        signIn,
+        signInGoogle,
+        logout: handleSignOut,
     };
+
     return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
-export function useAuth() { return useContext(AuthContext); }
+
+export function useAuth() {
+    return useContext(AuthContext);
+}

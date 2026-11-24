@@ -1,0 +1,13 @@
+.boardContainer {
+  display: flex;
+  gap: 16px;
+  overflow-x: auto;
+  padding-bottom: 24px;
+  align-items: stretch;
+}
+
+@media (max-width: 1024px) {
+  .boardContainer {
+    flex-direction: column;
+  }
+}

@@ -1,0 +1,616 @@
+/**
+ * DevSphere Real API Client & Token Lifecycle Adapter
+ * Implements:
+ * - In-memory access token storage (no localStorage)
+ * - CSRF token exchange (GET /api/v1/auth/csrf)
+ * - Silent refresh queue interceptor on 401 / token expiry
+ * - Domain-specific API methods for Workspaces, Projects, Requirements, WorkItems,
+ *   Dependencies, Sprints, QualityGates, and PlanProposals
+ * - Seamless fallback to mock data when NEXT_PUBLIC_AUTH_MOCK=true or backend is unreachable
+ */
+
+export class ApiClientError extends Error {
+  constructor(message, { status = 500, code = 'API_ERROR', detail = '', errors = null } = {}) {
+    super(message || detail || 'An unexpected API error occurred');
+    this.name = 'ApiClientError';
+    this.status = status;
+    this.code = code;
+    this.detail = detail;
+    this.errors = errors;
+  }
+}
+
+// In-memory token state
+let inMemoryAccessToken = null;
+let tokenExpiresAt = null;
+let csrfData = null; // { headerName, parameterName, token }
+let refreshPromise = null;
+const authFailureListeners = new Set();
+
+export function setAccessToken(token, expiresAt) {
+  inMemoryAccessToken = token;
+  tokenExpiresAt = expiresAt ? new Date(expiresAt).getTime() : null;
+}
+
+export function getAccessToken() {
+  return inMemoryAccessToken;
+}
+
+export function getTokenExpiresAt() {
+  return tokenExpiresAt;
+}
+
+export function clearAccessToken() {
+  inMemoryAccessToken = null;
+  tokenExpiresAt = null;
+}
+
+export function clearCsrfCache() {
+  csrfData = null;
+}
+
+export function onAuthFailure(listener) {
+  authFailureListeners.add(listener);
+  return () => authFailureListeners.delete(listener);
+}
+
+function notifyAuthFailure() {
+  clearAccessToken();
+  for (const listener of authFailureListeners) {
+    try {
+      listener();
+    } catch {
+      // ignore errors in listeners
+    }
+  }
+}
+
+// Environment flags
+export function isMockAuthEnabled() {
+  if (typeof process === 'undefined') return false;
+  if (process.env.NEXT_PUBLIC_AUTH_MOCK === 'true') return true;
+  if (process.env.NEXT_PUBLIC_AUTH_MOCK === 'false') return false;
+  return process.env.NODE_ENV === 'development';
+}
+
+function getBaseUrl() {
+  if (typeof window !== 'undefined') {
+    return '';
+  }
+  return (process.env.DEVSPHERE_BACKEND_URL || 'http://localhost:8080').replace(/\/$/, '');
+}
+
+/**
+ * Fetch and cache CSRF token from Spring Security endpoint
+ */
+export async function fetchCsrfToken(force = false) {
+  if (!force && csrfData?.token) {
+    return csrfData;
+  }
+  const url = `${getBaseUrl()}/api/v1/auth/csrf`;
+  try {
+    const res = await fetch(url, {
+      method: 'GET',
+      headers: { Accept: 'application/json' },
+      credentials: 'include',
+    });
+    if (res.ok) {
+      const data = await res.json();
+      csrfData = {
+        headerName: data.headerName || 'X-CSRF-TOKEN',
+        parameterName: data.parameterName || '_csrf',
+        token: data.token,
+      };
+      return csrfData;
+    }
+  } catch {
+    // Return placeholder if unreachable
+  }
+  return { headerName: 'X-CSRF-TOKEN', parameterName: '_csrf', token: '' };
+}
+
+/**
+ * Primary apiFetch with automatic Bearer token, CSRF, and 401 silent refresh
+ */
+export async function apiFetch(path, options = {}) {
+  const url = path.startsWith('http') ? path : `${getBaseUrl()}${path.startsWith('/') ? path : `/${path}`}`;
+  const method = (options.method || 'GET').toUpperCase();
+  const isStateChanging = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method);
+  const isAuthEndpoint = path.includes('/api/v1/auth/');
+  const isLoginOrRefresh = path.includes('/login') || path.includes('/refresh');
+
+  // Prepare headers
+  const headers = new Headers(options.headers || {});
+  if (!headers.has('Accept')) {
+    headers.set('Accept', 'application/json');
+  }
+
+  // Include CSRF for state-changing or auth operations
+  if (isStateChanging || isAuthEndpoint) {
+    const csrf = await fetchCsrfToken();
+    if (csrf?.token && csrf.headerName) {
+      headers.set(csrf.headerName, csrf.token);
+    }
+  }
+
+  // Include in-memory Bearer token if available
+  if (inMemoryAccessToken && !headers.has('Authorization')) {
+    headers.set('Authorization', `Bearer ${inMemoryAccessToken}`);
+  }
+
+  // Auto stringify json body if not FormData or string
+  let body = options.body;
+  if (body && typeof body === 'object' && !(body instanceof FormData) && !(body instanceof URLSearchParams)) {
+    if (!headers.has('Content-Type')) {
+      headers.set('Content-Type', 'application/json');
+    }
+    body = JSON.stringify(body);
+  }
+
+  const fetchOptions = {
+    ...options,
+    method,
+    headers,
+    body,
+    credentials: 'include',
+  };
+
+  let res;
+  try {
+    res = await fetch(url, fetchOptions);
+  } catch (err) {
+    throw new ApiClientError(err.message || 'Network error connecting to backend service', {
+      status: 0,
+      code: 'NETWORK_ERROR',
+      detail: err.message,
+    });
+  }
+
+  // Handle 401 Unauthorized with silent refresh queue
+  if (res.status === 401 && !isLoginOrRefresh) {
+    if (!refreshPromise) {
+      refreshPromise = performSilentRefresh();
+    }
+    const refreshed = await refreshPromise;
+    if (refreshed) {
+      // Retry request with newly acquired token
+      headers.set('Authorization', `Bearer ${inMemoryAccessToken}`);
+      return apiFetch(path, { ...options, headers });
+    } else {
+      notifyAuthFailure();
+      const problem = await parseProblemDetail(res);
+      throw new ApiClientError(problem.detail || 'Session expired. Please sign in again.', {
+        status: 401,
+        code: problem.code || 'SESSION_EXPIRED',
+        detail: problem.detail,
+      });
+    }
+  }
+
+  if (!res.ok) {
+    const problem = await parseProblemDetail(res);
+    throw new ApiClientError(problem.detail || problem.title || `API request failed with status ${res.status}`, {
+      status: res.status,
+      code: problem.code || `HTTP_${res.status}`,
+      detail: problem.detail,
+      errors: problem.errors,
+    });
+  }
+
+  if (res.status === 204) {
+    return null;
+  }
+
+  const contentType = res.headers.get('content-type') || '';
+  if (contentType.includes('application/json') || contentType.includes('application/problem+json')) {
+    return res.json();
+  }
+  return res.text();
+}
+
+async function parseProblemDetail(res) {
+  try {
+    const data = await res.json();
+    return {
+      title: data.title || '',
+      detail: data.detail || data.message || '',
+      code: data.code || '',
+      status: data.status || res.status,
+      errors: data.errors || null,
+    };
+  } catch {
+    return {
+      title: res.statusText || 'Error',
+      detail: '',
+      code: `HTTP_${res.status}`,
+      status: res.status,
+    };
+  }
+}
+
+async function performSilentRefresh() {
+  try {
+    const csrf = await fetchCsrfToken();
+    const headers = {
+      Accept: 'application/json',
+      [csrf.headerName || 'X-CSRF-TOKEN']: csrf.token || '',
+    };
+    const url = `${getBaseUrl()}/api/v1/auth/refresh`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers,
+      credentials: 'include',
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.accessToken) {
+        setAccessToken(data.accessToken, data.expiresAt);
+        return true;
+      }
+    }
+    return false;
+  } catch {
+    return false;
+  } finally {
+    refreshPromise = null;
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Authentication Endpoints
+// -----------------------------------------------------------------------------
+
+export async function login({ email, password }) {
+  const csrf = await fetchCsrfToken();
+  const url = `${getBaseUrl()}/api/v1/auth/login`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+      [csrf.headerName || 'X-CSRF-TOKEN']: csrf.token || '',
+    },
+    credentials: 'include',
+    body: JSON.stringify({ email, password }),
+  });
+
+  if (!res.ok) {
+    const problem = await parseProblemDetail(res);
+    throw new ApiClientError(problem.detail || 'Sign-in failed', {
+      status: res.status,
+      code: problem.code || 'AUTH_INVALID',
+      detail: problem.detail,
+    });
+  }
+
+  const data = await res.json();
+  setAccessToken(data.accessToken, data.expiresAt);
+  return data;
+}
+
+export async function refreshSession() {
+  const success = await performSilentRefresh();
+  if (!success) {
+    throw new ApiClientError('Failed to refresh session', {
+      status: 401,
+      code: 'REFRESH_FAILED',
+    });
+  }
+  return {
+    accessToken: inMemoryAccessToken,
+    expiresAt: tokenExpiresAt,
+  };
+}
+
+export async function logout() {
+  try {
+    await apiFetch('/api/v1/auth/logout', { method: 'POST' });
+  } finally {
+    clearAccessToken();
+    clearCsrfCache();
+  }
+}
+
+export async function fetchCurrentUser() {
+  return apiFetch('/api/v1/auth/me', { method: 'GET' });
+}
+
+// -----------------------------------------------------------------------------
+// Workspace Endpoints
+// -----------------------------------------------------------------------------
+
+export async function fetchWorkspaces({ page = 0, size = 50 } = {}) {
+  return apiFetch(`/api/v1/workspaces?page=${page}&size=${size}`);
+}
+
+export async function getWorkspace(workspaceId) {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}`);
+}
+
+export async function createWorkspace({ name, slug, description }) {
+  return apiFetch('/api/v1/workspaces', {
+    method: 'POST',
+    body: { name, slug, description: description || undefined },
+  });
+}
+
+export async function updateWorkspace(workspaceId, { name, description }) {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}`, {
+    method: 'PATCH',
+    body: { name, description },
+  });
+}
+
+export async function getWorkspaceSetup(workspaceId) {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/setup`).catch(() => getWorkspace(workspaceId));
+}
+
+// -----------------------------------------------------------------------------
+// Project Endpoints
+// -----------------------------------------------------------------------------
+
+export async function fetchProjects(workspaceId) {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/projects`);
+}
+
+export async function getProject(workspaceId, projectId) {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/projects/${projectId}`);
+}
+
+export async function createProject(workspaceId, projectData) {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/projects`, {
+    method: 'POST',
+    body: projectData,
+  });
+}
+
+export async function updateProject(workspaceId, projectId, updateData) {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/projects/${projectId}`, {
+    method: 'PATCH',
+    body: updateData,
+  });
+}
+
+export async function activateProject(workspaceId, projectId) {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/projects/${projectId}/activate`, {
+    method: 'POST',
+  });
+}
+
+// -----------------------------------------------------------------------------
+// Requirement Endpoints
+// -----------------------------------------------------------------------------
+
+export async function fetchRequirements(workspaceId, projectId, { status } = {}) {
+  const query = status ? `?status=${encodeURIComponent(status)}` : '';
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/projects/${projectId}/requirements${query}`);
+}
+
+export async function getRequirement(workspaceId, projectId, requirementId) {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/projects/${projectId}/requirements/${requirementId}`);
+}
+
+export async function createRequirement(workspaceId, projectId, requirementData) {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/projects/${projectId}/requirements`, {
+    method: 'POST',
+    body: requirementData,
+  });
+}
+
+// -----------------------------------------------------------------------------
+// Work Item & Backlog Endpoints
+// -----------------------------------------------------------------------------
+
+export async function fetchWorkItems(workspaceId, projectId, filters = {}) {
+  const params = new URLSearchParams();
+  if (filters.type) params.set('type', filters.type);
+  if (filters.status) params.set('status', filters.status);
+  if (filters.assigneeId) params.set('assigneeId', filters.assigneeId);
+  if (filters.parentId) params.set('parentId', filters.parentId);
+  if (filters.requirementId) params.set('requirementId', filters.requirementId);
+  if (filters.sprintId) params.set('sprintId', filters.sprintId);
+  const qs = params.toString() ? `?${params.toString()}` : '';
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/projects/${projectId}/work-items${qs}`);
+}
+
+export async function fetchBacklog(workspaceId, projectId) {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/projects/${projectId}/backlog`);
+}
+
+export async function getWorkItem(workspaceId, projectId, workItemId) {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/projects/${projectId}/work-items/${workItemId}`);
+}
+
+export async function createWorkItem(workspaceId, projectId, workItemData) {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/projects/${projectId}/work-items`, {
+    method: 'POST',
+    body: workItemData,
+  });
+}
+
+export async function updateWorkItem(workspaceId, projectId, workItemId, updateData) {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/projects/${projectId}/work-items/${workItemId}`, {
+    method: 'PATCH',
+    body: updateData,
+  });
+}
+
+export async function deleteWorkItem(workspaceId, projectId, workItemId) {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/projects/${projectId}/work-items/${workItemId}`, {
+    method: 'DELETE',
+  });
+}
+
+export async function assignWorkItem(workspaceId, projectId, workItemId, { assigneeId }) {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/projects/${projectId}/work-items/${workItemId}/assign`, {
+    method: 'PATCH',
+    body: { assigneeId },
+  });
+}
+
+export async function transitionWorkItemStatus(workspaceId, projectId, workItemId, { targetStatus, reason }) {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/projects/${projectId}/work-items/${workItemId}/status`, {
+    method: 'PATCH',
+    body: { targetStatus, reason },
+  });
+}
+
+export async function acceptWorkItem(workspaceId, projectId, workItemId) {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/projects/${projectId}/work-items/${workItemId}/accept`, {
+    method: 'POST',
+  });
+}
+
+export async function rejectWorkItem(workspaceId, projectId, workItemId, { reason, targetStatus } = {}) {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/projects/${projectId}/work-items/${workItemId}/reject`, {
+    method: 'POST',
+    body: { reason, targetStatus },
+  });
+}
+
+export async function blockWorkItem(workspaceId, projectId, workItemId, { blocked, blockedReason }) {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/projects/${projectId}/work-items/${workItemId}/blocked`, {
+    method: 'PATCH',
+    body: { blocked, blockedReason },
+  });
+}
+
+// -----------------------------------------------------------------------------
+// Dependency Endpoints
+// -----------------------------------------------------------------------------
+
+export async function fetchDependencies(workspaceId, projectId) {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/projects/${projectId}/dependencies`);
+}
+
+export async function createDependency(workspaceId, projectId, { predecessorId, successorId, type = 'FINISH_TO_START', lagMinutes = 0 }) {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/projects/${projectId}/dependencies`, {
+    method: 'POST',
+    body: { predecessorId, successorId, type, lagMinutes },
+  });
+}
+
+export async function deleteDependency(workspaceId, projectId, dependencyId) {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/projects/${projectId}/dependencies/${dependencyId}`, {
+    method: 'DELETE',
+  });
+}
+
+// -----------------------------------------------------------------------------
+// Sprint Endpoints
+// -----------------------------------------------------------------------------
+
+export async function fetchSprints(workspaceId, projectId, { status } = {}) {
+  const query = status ? `?status=${encodeURIComponent(status)}` : '';
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/projects/${projectId}/sprints${query}`);
+}
+
+export async function getSprint(workspaceId, projectId, sprintId) {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/projects/${projectId}/sprints/${sprintId}`);
+}
+
+export async function createSprint(workspaceId, projectId, sprintData) {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/projects/${projectId}/sprints`, {
+    method: 'POST',
+    body: sprintData,
+  });
+}
+
+export async function startSprint(workspaceId, projectId, sprintId, data = {}) {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/projects/${projectId}/sprints/${sprintId}/start`, {
+    method: 'POST',
+    body: data,
+  });
+}
+
+export async function closeSprint(workspaceId, projectId, sprintId, data = {}) {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/projects/${projectId}/sprints/${sprintId}/close`, {
+    method: 'POST',
+    body: data,
+  });
+}
+
+export async function getSprintProgress(workspaceId, projectId, sprintId) {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/projects/${projectId}/sprints/${sprintId}/progress`);
+}
+
+export async function addSprintItems(workspaceId, projectId, sprintId, itemIds) {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/projects/${projectId}/sprints/${sprintId}/items`, {
+    method: 'POST',
+    body: { itemIds, action: 'ADD' },
+  });
+}
+
+export async function removeSprintItems(workspaceId, projectId, sprintId, itemIds) {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/projects/${projectId}/sprints/${sprintId}/items`, {
+    method: 'DELETE',
+    body: { itemIds, action: 'REMOVE' },
+  });
+}
+
+// -----------------------------------------------------------------------------
+// Quality Gate Endpoints
+// -----------------------------------------------------------------------------
+
+export async function fetchQualityGate(workspaceId, projectId, workItemId) {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/projects/${projectId}/work-items/${workItemId}/quality-gate`);
+}
+
+// -----------------------------------------------------------------------------
+// Plan Proposal Endpoints
+// -----------------------------------------------------------------------------
+
+export async function fetchPlanProposals(workspaceId, projectId) {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/projects/${projectId}/plan-proposals`);
+}
+
+export async function getPlanProposal(workspaceId, projectId, proposalId) {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/projects/${projectId}/plan-proposals/${proposalId}`);
+}
+
+export async function createPlanProposal(workspaceId, projectId, data) {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/projects/${projectId}/plan-proposals`, {
+    method: 'POST',
+    body: data,
+  });
+}
+
+export async function solvePlanProposal(workspaceId, projectId, proposalId, options = {}) {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/projects/${projectId}/plan-proposals/${proposalId}/solve`, {
+    method: 'POST',
+    body: options,
+  });
+}
+
+export async function previewPlanProposal(workspaceId, projectId, proposalId) {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/projects/${projectId}/plan-proposals/${proposalId}/preview`);
+}
+
+export async function getPlanProposalDiagnostics(workspaceId, projectId, proposalId) {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/projects/${projectId}/plan-proposals/${proposalId}/diagnostics`);
+}
+
+export async function approvePlanProposal(workspaceId, projectId, proposalId, { notes } = {}) {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/projects/${projectId}/plan-proposals/${proposalId}/approve`, {
+    method: 'POST',
+    body: { notes },
+  });
+}
+
+export async function getDeadlineConsent(workspaceId, projectId, proposalId) {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/projects/${projectId}/plan-proposals/${proposalId}/deadline-consent`);
+}
+
+export async function confirmDeadline(workspaceId, projectId, proposalId, { rationale, acknowledgedDelayDays = 0, confirmedByRole = 'PM' } = {}) {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/projects/${projectId}/plan-proposals/${proposalId}/deadline-confirmation`, {
+    method: 'POST',
+    body: { rationale, acknowledgedDelayDays, confirmedByRole },
+  });
+}
+
+export async function applyPlanProposal(workspaceId, projectId, proposalId, { applyMode = 'ALL' } = {}) {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/projects/${projectId}/plan-proposals/${proposalId}/apply`, {
+    method: 'POST',
+    body: { applyMode },
+  });
+}

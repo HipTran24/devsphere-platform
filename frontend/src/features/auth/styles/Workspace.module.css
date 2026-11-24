@@ -15,7 +15,12 @@
 .createBtn { background: var(--color-primary, #2DD4BF); color: var(--color-black); border: 1px solid var(--color-primary, #2DD4BF); border-radius: 8px; padding: 10px 18px; font-weight: 700; cursor: pointer; font-size: 14px; }
 .createBtn:hover { opacity: 0.92; }
 .workspaceGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; margin-top: 24px; }
-.workspaceCard { background: var(--color-card, #1e1e24); border: 1px solid #333; border-radius: 12px; padding: 20px; display: flex; flex-direction: column; gap: 10px; }
+.workspaceCard { background: var(--color-card, #1e1e24); border: 1px solid #333; border-radius: 12px; padding: 20px; display: flex; flex-direction: column; gap: 10px; cursor: pointer; transition: border-color 0.15s ease, transform 0.15s ease; }
+.workspaceCard:hover { border-color: var(--color-primary, #2DD4BF); transform: translateY(-2px); }
+.workspaceCard:focus-visible { outline: 2px solid var(--color-primary, #2DD4BF); outline-offset: 2px; }
+.cardActions { margin-top: auto; padding-top: 12px; display: flex; justify-content: flex-end; }
+.openBacklogBtn { background: transparent; border: 1px solid #3f3f46; color: var(--color-primary, #2DD4BF); border-radius: 6px; padding: 6px 12px; font-size: 13px; font-weight: 600; cursor: pointer; transition: background 0.15s ease; }
+.openBacklogBtn:hover { background: rgba(45, 212, 191, 0.1); border-color: var(--color-primary, #2DD4BF); }
 .cardHeader { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
 .cardTitle { font-size: 18px; font-weight: 600; margin: 0; color: var(--color-text); }
 .cardSlug { font-size: 12px; color: var(--color-text-secondary); font-family: monospace; }
