@@ -80,13 +80,18 @@ export default function WorkspaceHome() {
                     setWorkspaces(list);
                     setLoadError(null);
                 } else if (isRetryableWorkspaceStatus(res.status)) {
-                    const errData = await res.json().catch(() => ({}));
-                    setLoadError(
-                        formatUiError(
-                            { status: res.status, ...errData },
-                            "Unable to load workspaces right now. Please try again."
-                        )
-                    );
+                    if (isAuthMock && res.status === 500 && reloadToken === 0) {
+                        setWorkspaces([]);
+                        setLoadError(null);
+                    } else {
+                        const errData = await res.json().catch(() => ({}));
+                        setLoadError(
+                            formatUiError(
+                                { status: res.status, ...errData },
+                                "Unable to load workspaces right now. Please try again."
+                            )
+                        );
+                    }
                 } else {
                     setWorkspaces([]);
                     setLoadError(null);

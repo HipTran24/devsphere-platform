@@ -174,7 +174,7 @@ export function CreateNewPasswordView() {
                 const flow=getAuthFlow();
                 if (!flow || flow.stage!=='password') throw new AuthError('RESET_REQUIRED','Verify your code first.');
                 await resetPassword({resetGrantId:flow.resetGrantId,password:data.password});
-                element.reset(); clearAuthFlow(); auth.logout();
+                element.reset(); clearAuthFlow();
                 auth.setNotice('Password reset complete. Sign in again.');
                 router.replace('/login');
             })}>
