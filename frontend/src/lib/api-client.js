@@ -377,3 +377,101 @@ export async function activateProject(workspaceId, projectId) {
   });
 }
 
+// -----------------------------------------------------------------------------
+// Requirement Endpoints
+// -----------------------------------------------------------------------------
+
+export async function fetchRequirements(workspaceId, projectId, { status } = {}) {
+  const query = status ? `?status=${encodeURIComponent(status)}` : '';
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/projects/${projectId}/requirements${query}`);
+}
+
+export async function getRequirement(workspaceId, projectId, requirementId) {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/projects/${projectId}/requirements/${requirementId}`);
+}
+
+export async function createRequirement(workspaceId, projectId, requirementData) {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/projects/${projectId}/requirements`, {
+    method: 'POST',
+    body: requirementData,
+  });
+}
+
+// -----------------------------------------------------------------------------
+// Work Item & Backlog Endpoints
+// -----------------------------------------------------------------------------
+
+export async function fetchWorkItems(workspaceId, projectId, filters = {}) {
+  const params = new URLSearchParams();
+  if (filters.type) params.set('type', filters.type);
+  if (filters.status) params.set('status', filters.status);
+  if (filters.assigneeId) params.set('assigneeId', filters.assigneeId);
+  if (filters.parentId) params.set('parentId', filters.parentId);
+  if (filters.requirementId) params.set('requirementId', filters.requirementId);
+  if (filters.sprintId) params.set('sprintId', filters.sprintId);
+  const qs = params.toString() ? `?${params.toString()}` : '';
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/projects/${projectId}/work-items${qs}`);
+}
+
+export async function fetchBacklog(workspaceId, projectId) {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/projects/${projectId}/backlog`);
+}
+
+export async function getWorkItem(workspaceId, projectId, workItemId) {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/projects/${projectId}/work-items/${workItemId}`);
+}
+
+export async function createWorkItem(workspaceId, projectId, workItemData) {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/projects/${projectId}/work-items`, {
+    method: 'POST',
+    body: workItemData,
+  });
+}
+
+export async function updateWorkItem(workspaceId, projectId, workItemId, updateData) {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/projects/${projectId}/work-items/${workItemId}`, {
+    method: 'PATCH',
+    body: updateData,
+  });
+}
+
+export async function deleteWorkItem(workspaceId, projectId, workItemId) {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/projects/${projectId}/work-items/${workItemId}`, {
+    method: 'DELETE',
+  });
+}
+
+export async function assignWorkItem(workspaceId, projectId, workItemId, { assigneeId }) {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/projects/${projectId}/work-items/${workItemId}/assign`, {
+    method: 'PATCH',
+    body: { assigneeId },
+  });
+}
+
+export async function transitionWorkItemStatus(workspaceId, projectId, workItemId, { targetStatus, reason }) {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/projects/${projectId}/work-items/${workItemId}/status`, {
+    method: 'PATCH',
+    body: { targetStatus, reason },
+  });
+}
+
+export async function acceptWorkItem(workspaceId, projectId, workItemId) {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/projects/${projectId}/work-items/${workItemId}/accept`, {
+    method: 'POST',
+  });
+}
+
+export async function rejectWorkItem(workspaceId, projectId, workItemId, { reason, targetStatus } = {}) {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/projects/${projectId}/work-items/${workItemId}/reject`, {
+    method: 'POST',
+    body: { reason, targetStatus },
+  });
+}
+
+export async function blockWorkItem(workspaceId, projectId, workItemId, { blocked, blockedReason }) {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/projects/${projectId}/work-items/${workItemId}/blocked`, {
+    method: 'PATCH',
+    body: { blocked, blockedReason },
+  });
+}
+
