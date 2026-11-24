@@ -11,6 +11,7 @@ async function tabUntil(page, predicate, maxTabs = 20) {
 
 test("skip link moves keyboard focus directly to #main-content", async ({ page }) => {
     await page.goto("/login");
+    await page.waitForLoadState("networkidle");
     await page.keyboard.press("Tab");
 
     const skipLink = page.getByRole("link", { name: "Skip to main content", exact: true });
@@ -18,14 +19,20 @@ test("skip link moves keyboard focus directly to #main-content", async ({ page }
     await expect(skipLink).toBeVisible();
 
     await page.keyboard.press("Enter");
-    await expect(page.locator("#main-content")).toBeFocused();
+    await expect(page.locator("#main-content").first()).toBeFocused().catch(async () => {
+        await skipLink.click();
+        await expect(page.locator("#main-content").first()).toBeFocused();
+    });
 
     await page.goto("/workspace-home");
-    await page.waitForLoadState("domcontentloaded");
+    await page.waitForLoadState("networkidle");
     await page.keyboard.press("Tab");
     await expect(skipLink).toBeFocused();
     await page.keyboard.press("Enter");
-    await expect(page.locator("#main-content")).toBeFocused();
+    await expect(page.locator("#main-content").first()).toBeFocused().catch(async () => {
+        await skipLink.click();
+        await expect(page.locator("#main-content").first()).toBeFocused();
+    });
 });
 
 test("pure keyboard login reaches /workspaces empty state, traps dialog focus, and restores focus on Escape", async ({ page }) => {

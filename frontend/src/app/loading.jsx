@@ -3,8 +3,8 @@ import styles from "./StatePages.module.css";
 
 export default function Loading() {
     return (
-        <main id="main-content" tabIndex={-1} className={styles.page}>
+        <div role="status" aria-live="polite" className={styles.page}>
             <LoadingState variant="page" label="Loading DevSphere…" />
-        </main>
+        </div>
     );
 }
