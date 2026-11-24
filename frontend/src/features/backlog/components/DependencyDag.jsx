@@ -104,7 +104,7 @@ export default function DependencyDag({
             type="button"
             className={styles.addDepBtn}
             onClick={handleOpenForm}
-            aria-label="Add New Dependency"
+            aria-label="Add Dependency"
           >
             <Plus size={16} aria-hidden="true" />
             <span>Add Dependency</span>
