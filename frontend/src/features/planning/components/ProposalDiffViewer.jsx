@@ -38,7 +38,7 @@ export default function ProposalDiffViewer({
   const isOptimal = solverStatus === "OPTIMAL";
   const isFeasible = solverStatus === "FEASIBLE";
 
-  const diffItems = scheduleDiff?.diffItems || [];
+  const diffItems = useMemo(() => scheduleDiff?.diffItems || [], [scheduleDiff]);
   const summary = scheduleDiff?.summary || {};
 
   const filteredDiffItems = useMemo(() => {

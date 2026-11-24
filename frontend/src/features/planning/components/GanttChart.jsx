@@ -35,6 +35,7 @@ export default function GanttChart({
   selectedTaskId,
 }) {
   const [activeMilestone, setActiveMilestone] = useState(null);
+  const [currentTime] = useState(() => Date.now());
 
   const { minTime, maxTime } = timelineBounds || {};
 
@@ -44,8 +45,8 @@ export default function GanttChart({
 
   // Today position
   const todayPct = useMemo(() => {
-    return getDatePositionPercent(Date.now(), minTime, maxTime);
-  }, [minTime, maxTime]);
+    return getDatePositionPercent(currentTime, minTime, maxTime);
+  }, [currentTime, minTime, maxTime]);
 
   // Compute dependency lines
   const dependencyLines = useMemo(() => {
