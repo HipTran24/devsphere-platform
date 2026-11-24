@@ -7,7 +7,7 @@
     "test": "tests"
   },
   "scripts": {
-    "test": "node --test tests/auth.test.js tests/session.test.js tests/ui-states.test.js tests/api-client.test.js",
+    "test": "node --test tests/auth.test.js tests/session.test.js tests/ui-states.test.js tests/api-client.test.js tests/backlog.test.js",
     "lint": "eslint . --max-warnings=0",
     "test:e2e": "playwright test",
     "dev": "next dev",
