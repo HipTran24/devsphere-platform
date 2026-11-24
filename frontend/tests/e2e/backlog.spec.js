@@ -199,4 +199,29 @@ test.describe('Backlog & Requirements UI', () => {
     await cancelBtn.click();
     await expect(page.getByLabel('Predecessor (Blocks)')).toBeHidden();
   });
+
+  test('navigates work item rows via keyboard arrow keys and opens modal on Enter', async ({ page }) => {
+    await page.goto('/p/DSP/backlog');
+    await page.waitForLoadState('networkidle');
+
+    // Click first item row to establish focus
+    const firstRow = page.getByRole('row', { name: /DSP-1 / }).first();
+    await expect(firstRow).toBeVisible();
+    await firstRow.focus();
+
+    // Press ArrowDown to navigate to next row
+    await page.keyboard.press('ArrowDown');
+    const secondRow = page.getByRole('row', { name: /DSP-3 / }).first();
+    await expect(secondRow).toBeFocused();
+
+    // Press Enter to open edit modal
+    await page.keyboard.press('Enter');
+    const dialog = page.getByRole('dialog', { name: 'Edit Work Item' });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByText('DSP-3', { exact: true })).toBeVisible();
+
+    // Close with Escape
+    await page.keyboard.press('Escape');
+    await expect(dialog).toBeHidden();
+  });
 });
