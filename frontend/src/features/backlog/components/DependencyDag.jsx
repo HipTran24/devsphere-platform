@@ -116,6 +116,12 @@ export default function DependencyDag({
         <form
           className={styles.addDepFormCard}
           onSubmit={handleSubmitForm}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") {
+              e.preventDefault();
+              handleCancelForm();
+            }
+          }}
           aria-label="Create dependency link"
         >
           <div className={styles.formGrid}>
